@@ -9,6 +9,11 @@ import {
   upsertFundCycle,
 } from "@/actions/fund-cycle";
 import { OpsWorkstation } from "@/components/ui/ops-workstation";
+import {
+  numberFieldValue,
+  resolveNumberField,
+  type NumberFieldValue,
+} from "@/lib/forms/number-field";
 
 export type CycleFormValues = {
   id?: string;
@@ -16,9 +21,9 @@ export type CycleFormValues = {
   contributionAmount: string;
   loanInterestRate: string;
   penaltyRate: string;
-  gracePeriodDays: number;
+  gracePeriodDays: NumberFieldValue;
   maxLoanablePoolRatio: string;
-  loanTermMonths: number;
+  loanTermMonths: NumberFieldValue;
   startDate: string;
   endDate: string;
   isActive: boolean;
@@ -81,9 +86,17 @@ export function CycleSettings({
         contributionAmount: form.contributionAmount,
         loanInterestRate: form.loanInterestRate,
         penaltyRate: form.penaltyRate,
-        gracePeriodDays: Number(form.gracePeriodDays),
+        gracePeriodDays: resolveNumberField(form.gracePeriodDays, 0, {
+          min: 0,
+          max: 30,
+          integer: true,
+        }),
         maxLoanablePoolRatio: form.maxLoanablePoolRatio,
-        loanTermMonths: Number(form.loanTermMonths),
+        loanTermMonths: resolveNumberField(form.loanTermMonths, 1, {
+          min: 1,
+          max: 24,
+          integer: true,
+        }),
         startDate: form.startDate,
         endDate: form.endDate,
         activate,
@@ -263,11 +276,13 @@ export function CycleSettings({
               <span className="rl-field-label">Grace Period (Days)</span>
               <input
                 type="number"
+                min={0}
+                max={30}
                 value={form.gracePeriodDays}
                 onChange={(e) =>
                   setForm({
                     ...form,
-                    gracePeriodDays: Number(e.target.value) || 0,
+                    gracePeriodDays: numberFieldValue(e.target.value),
                   })
                 }
                 className="rl-input font-mono"
@@ -303,11 +318,13 @@ export function CycleSettings({
               <span className="rl-field-label">Loan Term (Months)</span>
               <input
                 type="number"
+                min={1}
+                max={24}
                 value={form.loanTermMonths}
                 onChange={(e) =>
                   setForm({
                     ...form,
-                    loanTermMonths: Number(e.target.value) || 1,
+                    loanTermMonths: numberFieldValue(e.target.value),
                   })
                 }
                 className="rl-input font-mono"

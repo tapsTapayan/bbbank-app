@@ -6,7 +6,6 @@ import {
   parseAllocationScopeLabels,
   parseAllocationSummary,
 } from "@/lib/finance/payment-scope";
-import { planSubmissionAllocation } from "@/lib/finance/plan-submission-allocation";
 import type { PaymentPillStatus } from "@/lib/finance/status-labels";
 
 export type HistoryEventKind =
@@ -125,30 +124,43 @@ function scopeTitle(allocations: string[], fallback: string): string {
  */
 export async function getMemberTransactionHistory(
   userId: string,
-  limit = 120,
+  limit = 80,
 ): Promise<MemberHistoryEvent[]> {
   const [payments, loans] = await Promise.all([
     prisma.paymentSubmission.findMany({
       where: { userId },
       orderBy: { createdAt: "desc" },
-      take: 80,
-      include: {
+      take: 40,
+      select: {
+        id: true,
+        amount: true,
+        status: true,
+        targetType: true,
+        paymentChannel: true,
+        referenceNumber: true,
+        paidAt: true,
+        createdAt: true,
+        verifiedAt: true,
+        auditedAt: true,
+        remarks: true,
+        allocationSummary: true,
         contribution: {
           select: { dueDate: true, periodMonth: true, kinsenaIndex: true },
         },
         loanAmortization: { select: { installmentNumber: true } },
         verifiedBy: { select: { name: true } },
         auditedBy: { select: { name: true } },
+        // Only needed when allocationSummary is missing (legacy verifies).
         ledgerEntries: {
           orderBy: { createdAt: "asc" },
-          select: { amount: true, description: true, entryType: true },
+          select: { amount: true, description: true },
         },
       },
     }),
     prisma.loan.findMany({
       where: { borrowerId: userId },
       orderBy: { createdAt: "desc" },
-      take: 40,
+      take: 25,
       select: {
         id: true,
         principalAmount: true,
@@ -161,44 +173,6 @@ export async function getMemberTransactionHistory(
       },
     }),
   ]);
-
-  /** Backfill + persist planned scope for pending rows missing allocationSummary. */
-  const plannedById = new Map<string, string[]>();
-  await Promise.all(
-    payments
-      .filter(
-        (row) =>
-          row.status === "PENDING_VERIFICATION" &&
-          !row.allocationSummary?.trim(),
-      )
-      .map(async (row) => {
-        const planned = await planSubmissionAllocation({
-          userId,
-          amount: row.amount.toString(),
-          targetType: row.targetType,
-          paidAt: row.paidAt,
-        });
-        if (planned.lines.length === 0) return;
-        plannedById.set(row.id, planned.lines);
-        await prisma.paymentSubmission.updateMany({
-          where: { id: row.id },
-          data: {
-            allocationSummary: planned.summary,
-            ...(planned.primaryTargetId
-              ? row.targetType === "CONTRIBUTION"
-                ? {
-                    contributionId: planned.primaryTargetId,
-                    loanAmortizationId: null,
-                  }
-                : {
-                    loanAmortizationId: planned.primaryTargetId,
-                    contributionId: null,
-                  }
-              : {}),
-          },
-        });
-      }),
-  );
 
   const events: MemberHistoryEvent[] = [];
 
@@ -216,18 +190,14 @@ export async function getMemberTransactionHistory(
     const fallbackTitle = paymentPeriodTitle(row);
 
     const storedAlloc = parseAllocationSummary(row.allocationSummary);
-    const plannedAlloc = plannedById.get(row.id) ?? [];
+    // Prefer stored scope from submit/verify. Fall back to ledger lines for
+    // legacy verifies — never plan+write on the history read path.
     const ledgerAlloc =
       storedAlloc.length > 0
         ? storedAlloc
         : allocationsFromLedger(row.ledgerEntries);
 
-    const submitAllocations =
-      storedAlloc.length > 0
-        ? storedAlloc
-        : plannedAlloc.length > 0
-          ? plannedAlloc
-          : [];
+    const submitAllocations = storedAlloc;
 
     // Submitted = not yet reviewed. Members may cancel/delete until treasurer acts.
     const awaitingReview = row.status === "PENDING_VERIFICATION";

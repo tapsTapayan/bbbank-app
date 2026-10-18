@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { redirect } from "next/navigation";
 import type { User, UserRole } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
@@ -15,8 +16,10 @@ export type AuthResult =
 /**
  * Resolves the authenticated Supabase user to the Prisma `User` row.
  * Expects `users.id` to equal `auth.users.id` (Supabase UUID).
+ *
+ * Cached per React request so layout + page auth share one Supabase/Prisma round-trip.
  */
-export async function getCurrentAppUser(): Promise<AuthResult> {
+export const getCurrentAppUser = cache(async (): Promise<AuthResult> => {
   const supabase = await createClient();
   const { data, error } = await supabase.auth.getClaims();
 
@@ -57,7 +60,7 @@ export async function getCurrentAppUser(): Promise<AuthResult> {
   }
 
   return { ok: true, user };
-}
+});
 
 export async function requireAppUser(
   allowedRoles?: readonly UserRole[],

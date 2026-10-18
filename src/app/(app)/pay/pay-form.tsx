@@ -956,7 +956,6 @@ export function PayForm({
                   <input
                     type="file"
                     accept="image/*"
-                    capture="environment"
                     className="sr-only"
                     onChange={(e) =>
                       void onReceiptSelected(e.target.files?.[0] ?? null)

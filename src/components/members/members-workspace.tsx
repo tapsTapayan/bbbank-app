@@ -19,6 +19,11 @@ import {
 } from "@/actions/users";
 import { formatPHP } from "@/lib/finance/loan-calculator";
 import { displayLoginId } from "@/lib/auth/staff-identity";
+import {
+  numberFieldValue,
+  resolveNumberField,
+  type NumberFieldValue,
+} from "@/lib/forms/number-field";
 import type { UserRole, UserStatus } from "@/generated/prisma/client";
 import { OpsWorkstation } from "@/components/ui/ops-workstation";
 
@@ -303,13 +308,16 @@ function CreateAccountModal({
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [headsCount, setHeadsCount] = useState(1);
+  const [headsCount, setHeadsCount] = useState<NumberFieldValue>(1);
   const [role, setRole] = useState<"MEMBER" | "TREASURER" | "AUDITOR">(
     "MEMBER",
   );
   const [sendInvite, setSendInvite] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  const headsPreview =
+    typeof headsCount === "number" ? headsCount : 0;
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -344,7 +352,11 @@ function CreateAccountModal({
         name,
         email,
         role,
-        headsCount,
+        headsCount: resolveNumberField(headsCount, 1, {
+          min: 1,
+          max: 50,
+          integer: true,
+        }),
         temporaryPassword: password,
         sendInvite,
       });
@@ -444,12 +456,12 @@ function CreateAccountModal({
                     max={50}
                     value={headsCount}
                     onChange={(e) =>
-                      setHeadsCount(Math.max(1, Number(e.target.value) || 1))
+                      setHeadsCount(numberFieldValue(e.target.value))
                     }
                     className="rl-input font-mono"
                   />
                   <span className="rl-field-hint">
-                    {formatPHP(headsCount * contributionPerHead)} / kinsenas
+                    {formatPHP(headsPreview * contributionPerHead)} / kinsenas
                   </span>
                 </label>
 
@@ -522,7 +534,9 @@ function EditMemberModal({
   const [name, setName] = useState(member.name);
   const [email, setEmail] = useState(member.email ?? "");
   const [username, setUsername] = useState(member.username ?? "");
-  const [headsCount, setHeadsCount] = useState(member.headsCount);
+  const [headsCount, setHeadsCount] = useState<NumberFieldValue>(
+    member.headsCount,
+  );
   const [role, setRole] = useState(member.role);
   const [status, setStatus] = useState(member.status);
   const [newPassword, setNewPassword] = useState("");
@@ -533,6 +547,8 @@ function EditMemberModal({
 
   const isAdminAccount = member.role === "ADMIN" || Boolean(member.username);
   const deletePhraseMatches = deletePhrase === DELETE_CONFIRM_PHRASE;
+  const headsPreview =
+    typeof headsCount === "number" ? headsCount : 0;
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -554,7 +570,11 @@ function EditMemberModal({
       const result = await updateAppUser({
         userId: member.id,
         name,
-        headsCount,
+        headsCount: resolveNumberField(headsCount, member.headsCount, {
+          min: 1,
+          max: 50,
+          integer: true,
+        }),
         role,
         status,
         ...(isAdminAccount ? { username } : { email }),
@@ -679,12 +699,12 @@ function EditMemberModal({
                     max={50}
                     value={headsCount}
                     onChange={(e) =>
-                      setHeadsCount(Math.max(1, Number(e.target.value) || 1))
+                      setHeadsCount(numberFieldValue(e.target.value))
                     }
                     className="rl-input font-mono"
                   />
                   <span className="rl-field-hint">
-                    {formatPHP(headsCount * contributionPerHead)} / kinsenas
+                    {formatPHP(headsPreview * contributionPerHead)} / kinsenas
                   </span>
                 </label>
 

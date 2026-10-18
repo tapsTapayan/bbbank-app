@@ -30,13 +30,13 @@ const requestSchema = z.object({
 });
 
 async function loadMaxLoanable(userId: string, headsCount: number) {
-  const [members, cycle] = await Promise.all([
-    prisma.user.findMany({
+  const [headsAgg, cycle] = await Promise.all([
+    prisma.user.aggregate({
       where: {
         status: "ACTIVE",
         role: { in: ["MEMBER", "TREASURER", "AUDITOR"] },
       },
-      select: { headsCount: true },
+      _sum: { headsCount: true },
     }),
     prisma.fundCycle.findFirst({ where: { isActive: true } }),
   ]);
@@ -65,8 +65,8 @@ async function loadMaxLoanable(userId: string, headsCount: number) {
     }
   }
 
-  const headsList =
-    members.length > 0 ? members.map((m) => m.headsCount) : [headsCount];
+  const totalHeads = headsAgg._sum.headsCount ?? 0;
+  const headsList = totalHeads > 0 ? [totalHeads] : [headsCount];
   const collectibles = calculateTotalMonthlyCollectibles(headsList);
   const max = calculateMaxLoanableAmount(
     collectibles,

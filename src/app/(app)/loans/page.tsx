@@ -14,14 +14,19 @@ import { LoansCalculator } from "./loans-calculator";
 
 export const instant = false;
 
+const FUND_MEMBER_ROLES = ["MEMBER", "TREASURER", "AUDITOR"] as const;
+
 async function loadLoanContext(userId: string) {
   const now = new Date();
-  const [user, members, openContributions, blockingLoans, cycle] =
+  const [user, headsAgg, openContributions, blockingLoans, cycle] =
     await Promise.all([
       prisma.user.findUniqueOrThrow({ where: { id: userId } }),
-      prisma.user.findMany({
-        where: { status: "ACTIVE", role: "MEMBER" },
-        select: { headsCount: true },
+      prisma.user.aggregate({
+        where: {
+          status: "ACTIVE",
+          role: { in: [...FUND_MEMBER_ROLES] },
+        },
+        _sum: { headsCount: true },
       }),
       prisma.contribution.findMany({
         where: {
@@ -59,34 +64,13 @@ async function loadLoanContext(userId: string) {
     isBlockingOverdueContribution(c, now),
   );
 
-  let availableCash = new Decimal(0);
-  if (cycle) {
-    const entries = await prisma.ledgerEntry.groupBy({
-      by: ["entryType"],
-      where: { cycleId: cycle.id },
-      _sum: { amount: true },
-    });
-    const inflowTypes = new Set([
-      "CONTRIBUTION_IN",
-      "PRINCIPAL_REPAYMENT_IN",
-      "INTEREST_INCOME_IN",
-      "PENALTY_INCOME_IN",
-    ]);
-    const outflowTypes = new Set(["LOAN_DISBURSEMENT_OUT"]);
-    for (const row of entries) {
-      const amt = new Decimal(row._sum.amount?.toString() ?? "0");
-      if (inflowTypes.has(row.entryType)) {
-        availableCash = availableCash.plus(amt);
-      } else if (outflowTypes.has(row.entryType)) {
-        availableCash = availableCash.minus(amt);
-      }
-    }
-  }
+  const availableCash = cycle
+    ? await loadAvailableCash(cycle.id)
+    : new Decimal(0);
 
+  const totalHeads = headsAgg._sum.headsCount ?? 0;
   const headsList =
-    members.length > 0
-      ? members.map((m) => m.headsCount)
-      : [user.headsCount];
+    totalHeads > 0 ? [totalHeads] : [Math.max(1, user.headsCount)];
   const totalMonthlyCollectibles =
     calculateTotalMonthlyCollectibles(headsList);
 
@@ -120,6 +104,30 @@ async function loadLoanContext(userId: string) {
     limitedBy: maxLoanable.limitedBy,
     eligibility,
   };
+}
+
+async function loadAvailableCash(cycleId: string): Promise<Decimal> {
+  const entries = await prisma.ledgerEntry.groupBy({
+    by: ["entryType"],
+    where: { cycleId },
+    _sum: { amount: true },
+  });
+  const inflowTypes = new Set([
+    "CONTRIBUTION_IN",
+    "PRINCIPAL_REPAYMENT_IN",
+    "INTEREST_INCOME_IN",
+    "PENALTY_INCOME_IN",
+  ]);
+  let availableCash = new Decimal(0);
+  for (const row of entries) {
+    const amt = new Decimal(row._sum.amount?.toString() ?? "0");
+    if (inflowTypes.has(row.entryType)) {
+      availableCash = availableCash.plus(amt);
+    } else if (row.entryType === "LOAN_DISBURSEMENT_OUT") {
+      availableCash = availableCash.minus(amt);
+    }
+  }
+  return availableCash;
 }
 
 export default async function LoansPage() {
