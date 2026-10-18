@@ -33,6 +33,13 @@ export type MemberHistoryEvent = {
   pillLabel: string | null;
   /** Period-scoped allocation lines (planned on submit / posted on verify). */
   allocations: string[];
+  /**
+   * PaymentSubmission id for PAYMENT_SUBMITTED rows.
+   * Members may cancel/delete while canCancel is true (awaiting review).
+   */
+  submissionId: string | null;
+  /** True only for Submitted / PENDING_VERIFICATION — not a reviewed record. */
+  canCancel: boolean;
 };
 
 function channelLabel(channel: string): string {
@@ -222,6 +229,8 @@ export async function getMemberTransactionHistory(
           ? plannedAlloc
           : [];
 
+    // Submitted = not yet reviewed. Members may cancel/delete until treasurer acts.
+    const awaitingReview = row.status === "PENDING_VERIFICATION";
     events.push({
       id: `pay-submit-${row.id}`,
       kind: "PAYMENT_SUBMITTED",
@@ -232,10 +241,13 @@ export async function getMemberTransactionHistory(
       } bucket`,
       amount,
       amountLabel,
-      tone: "pending",
-      pill: "PENDING",
-      pillLabel: "Submitted",
+      tone: awaitingReview ? "pending" : "neutral",
+      pill: awaitingReview ? "PENDING" : null,
+      pillLabel: awaitingReview ? "Submitted" : "Filed",
       allocations: submitAllocations,
+      // Always pass id on submit events; cancel only when still awaiting review.
+      submissionId: row.id,
+      canCancel: awaitingReview,
     });
 
     if (row.verifiedAt) {
@@ -260,6 +272,8 @@ export async function getMemberTransactionHistory(
         pill: rejected ? "REJECTED" : "VERIFIED",
         pillLabel: rejected ? "Rejected" : "Verified",
         allocations: verifyAllocations,
+        submissionId: null,
+        canCancel: false,
       });
     }
 
@@ -280,6 +294,8 @@ export async function getMemberTransactionHistory(
         pill: flagged ? "FLAGGED" : "AUDITED",
         pillLabel: flagged ? "Flagged" : "Audited",
         allocations: flagged ? [] : ledgerAlloc,
+        submissionId: null,
+        canCancel: false,
       });
     }
   }
@@ -300,6 +316,8 @@ export async function getMemberTransactionHistory(
       pill: "PENDING",
       pillLabel: "Requested",
       allocations: [],
+      submissionId: null,
+      canCancel: false,
     });
 
     if (loan.status === "REJECTED") {
@@ -315,6 +333,8 @@ export async function getMemberTransactionHistory(
         pill: "REJECTED",
         pillLabel: "Rejected",
         allocations: [],
+        submissionId: null,
+        canCancel: false,
       });
       continue;
     }
@@ -336,6 +356,8 @@ export async function getMemberTransactionHistory(
         pill: "VERIFIED",
         pillLabel: "Released",
         allocations: [],
+        submissionId: null,
+        canCancel: false,
       });
     } else if (
       loan.approvedById &&
@@ -353,6 +375,8 @@ export async function getMemberTransactionHistory(
         pill: "AUDITED",
         pillLabel: "Approved",
         allocations: [],
+        submissionId: null,
+        canCancel: false,
       });
     }
   }

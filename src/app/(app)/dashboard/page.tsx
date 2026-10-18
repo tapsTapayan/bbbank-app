@@ -381,6 +381,7 @@ async function loadDashboard(userId: string): Promise<MemberDashboardData> {
       status: mapPaymentSubmissionStatus(p.status),
       date: p.createdAt.toISOString(),
       allocations,
+      canCancel: p.status === "PENDING_VERIFICATION",
     };
   });
 

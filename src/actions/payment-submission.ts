@@ -251,3 +251,56 @@ export async function submitPaymentProof(
     return fail(message);
   }
 }
+
+/**
+ * Member self-service: withdraw an unreviewed payment proof.
+ * Only the submitting member (MEMBER / TREASURER / AUDITOR acting on their own
+ * account) may cancel, and only while status is PENDING_VERIFICATION.
+ * Deletes the row — no ledger/balance changes exist until verification.
+ */
+export async function cancelPaymentSubmission(
+  submissionId: string,
+): Promise<ActionResult<{ id: string }>> {
+  try {
+    const member = await requireAppUser(["MEMBER", "TREASURER", "AUDITOR"]);
+    const id = submissionId?.trim();
+    if (!id) {
+      return fail("Submission is required.");
+    }
+
+    const result = await prisma.paymentSubmission.deleteMany({
+      where: {
+        id,
+        userId: member.id,
+        status: "PENDING_VERIFICATION",
+      },
+    });
+
+    if (result.count === 0) {
+      const existing = await prisma.paymentSubmission.findFirst({
+        where: { id, userId: member.id },
+        select: { status: true },
+      });
+      if (!existing) {
+        return fail("Payment submission not found.");
+      }
+      return fail(
+        "This payment has already been reviewed and can no longer be cancelled.",
+      );
+    }
+
+    revalidatePath("/dashboard");
+    revalidatePath("/pay");
+    revalidatePath("/verify");
+    revalidatePath("/history");
+    revalidatePath("/loans");
+
+    return ok({ id }, "Payment submission cancelled.");
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to cancel payment submission.";
+    return fail(message);
+  }
+}

@@ -1,7 +1,10 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
 import { ChevronRight, ArrowRight, CalendarClock } from "lucide-react";
+import { cancelPaymentSubmission } from "@/actions/payment-submission";
 import { formatPHP } from "@/lib/finance/loan-calculator";
 import {
   formatUtcDate,
@@ -24,6 +27,8 @@ export type DashboardRecentPayment = {
   date: string;
   /** Period-scoped allocation lines (planned on submit / posted on verify). */
   allocations: string[];
+  /** True while awaiting treasurer review — member may withdraw the proof. */
+  canCancel: boolean;
 };
 
 export type NextKinsenasObligation = {
@@ -115,6 +120,12 @@ function duesTone(
 }
 
 export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
+  const router = useRouter();
+  const [pendingCancelId, setPendingCancelId] = useState<string | null>(null);
+  const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+  const [cancelling, startCancel] = useTransition();
+
   const {
     memberName,
     headsCount,
@@ -131,6 +142,26 @@ export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
     paymentTargets,
     kinsenasYearMap,
   } = data;
+
+  function handleCancelPayment(submissionId: string) {
+    if (confirmCancelId !== submissionId) {
+      setConfirmCancelId(submissionId);
+      setCancelError(null);
+      return;
+    }
+    setPendingCancelId(submissionId);
+    startCancel(async () => {
+      const result = await cancelPaymentSubmission(submissionId);
+      setPendingCancelId(null);
+      setConfirmCancelId(null);
+      if (!result.success) {
+        setCancelError(result.error);
+        return;
+      }
+      setCancelError(null);
+      router.refresh();
+    });
+  }
 
   const firstName = memberName.split(" ")[0] ?? memberName;
   const currentDue = nextKinsenas
@@ -352,6 +383,11 @@ export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
                 Recent payments
               </h2>
             </div>
+            {cancelError ? (
+              <p className="rl-alert rl-alert-error mt-3" role="alert">
+                {cancelError}
+              </p>
+            ) : null}
             {recentPayments.length === 0 ? (
               <div className="rl-dash-empty">
                 <p className="type-body-sm font-medium text-[var(--ink-secondary)]">
@@ -367,7 +403,16 @@ export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
                         <p className="type-body-sm min-w-0 font-semibold">
                           {payment.label}
                         </p>
-                        <StatusPill status={payment.status} />
+                        <StatusPill
+                          status={payment.status}
+                          label={
+                            payment.canCancel
+                              ? "Submitted"
+                              : payment.status === "PENDING"
+                                ? "Pending"
+                                : undefined
+                          }
+                        />
                       </div>
                       <p className="type-caption mt-0.5 font-mono tabular-nums">
                         {new Date(payment.date).toLocaleDateString("en-PH", {
@@ -387,6 +432,44 @@ export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
                             </li>
                           ))}
                         </ul>
+                      ) : null}
+                      {payment.canCancel ? (
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          {confirmCancelId === payment.id ? (
+                            <p className="type-caption text-[var(--ink-secondary)]">
+                              Delete this submitted proof? It has not been
+                              reviewed yet.
+                            </p>
+                          ) : null}
+                          <button
+                            type="button"
+                            className={
+                              confirmCancelId === payment.id
+                                ? "rl-btn rl-btn-danger-outline rl-btn-sm"
+                                : "rl-btn rl-btn-secondary rl-btn-sm"
+                            }
+                            disabled={
+                              cancelling && pendingCancelId === payment.id
+                            }
+                            onClick={() => handleCancelPayment(payment.id)}
+                          >
+                            {cancelling && pendingCancelId === payment.id
+                              ? "Deleting…"
+                              : confirmCancelId === payment.id
+                                ? "Confirm delete"
+                                : "Delete submission"}
+                          </button>
+                          {confirmCancelId === payment.id ? (
+                            <button
+                              type="button"
+                              className="rl-btn rl-btn-ghost rl-btn-sm"
+                              disabled={cancelling}
+                              onClick={() => setConfirmCancelId(null)}
+                            >
+                              Keep submitted
+                            </button>
+                          ) : null}
+                        </div>
                       ) : null}
                     </div>
                   </li>

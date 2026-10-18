@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db";
 import { calculateKinsenasDue } from "@/lib/finance/cpe-policy";
 import { getMemberPaymentTargets } from "@/lib/queries/member-payment-targets";
 import { getMemberKinsenasYearMap } from "@/lib/queries/member-kinsenas-year";
+import { getMemberPendingSubmissions } from "@/lib/queries/member-pending-submissions";
 import { PayForm } from "./pay-form";
 
 export const instant = false;
@@ -13,20 +14,25 @@ export default async function PayPage({
 }: {
   searchParams: Promise<{ target?: string }>;
 }) {
-  const sessionUser = await requirePageUser(undefined, "/pay");
+  const sessionUser = await requirePageUser(
+    ["MEMBER", "TREASURER", "AUDITOR"],
+    "/pay",
+  );
   const params = await searchParams;
-  const [user, targets, activeCycle, kinsenasYearMap] = await Promise.all([
-    prisma.user.findUniqueOrThrow({
-      where: { id: sessionUser.id },
-      select: { id: true, headsCount: true, role: true },
-    }),
-    getMemberPaymentTargets(sessionUser.id),
-    prisma.fundCycle.findFirst({
-      where: { isActive: true },
-      select: { id: true, name: true, contributionAmount: true },
-    }),
-    getMemberKinsenasYearMap(sessionUser.id),
-  ]);
+  const [user, targets, activeCycle, kinsenasYearMap, pendingSubmissions] =
+    await Promise.all([
+      prisma.user.findUniqueOrThrow({
+        where: { id: sessionUser.id },
+        select: { id: true, headsCount: true, role: true },
+      }),
+      getMemberPaymentTargets(sessionUser.id),
+      prisma.fundCycle.findFirst({
+        where: { isActive: true },
+        select: { id: true, name: true, contributionAmount: true },
+      }),
+      getMemberKinsenasYearMap(sessionUser.id),
+      getMemberPendingSubmissions(sessionUser.id),
+    ]);
 
   const perHead = activeCycle?.contributionAmount?.toString();
   const kinsenasDue = Number(
@@ -43,6 +49,7 @@ export default async function PayPage({
       kinsenasDue={kinsenasDue}
       monthlyDue={monthlyDue}
       targets={targets}
+      pendingSubmissions={pendingSubmissions}
       initialTargetId={params.target ?? null}
       kinsenasYearMap={kinsenasYearMap}
       setupHint={

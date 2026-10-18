@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import {
   Banknote,
   CheckCircle2,
@@ -8,14 +9,25 @@ import {
   CircleDot,
   Flag,
   HandCoins,
+  Trash2,
   Upload,
   X,
   XCircle,
 } from "lucide-react";
+import { cancelPaymentSubmission } from "@/actions/payment-submission";
 import { FundCanvas } from "@/components/system/frames/fund-canvas";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusPill, NeutralPill } from "@/components/ui/status-pill";
 import type { MemberHistoryEvent } from "@/lib/queries/member-transaction-history";
+
+/** Submitted = awaiting review — members may delete/cancel. */
+function isCancellableSubmission(event: MemberHistoryEvent): boolean {
+  return (
+    event.kind === "PAYMENT_SUBMITTED" &&
+    event.canCancel === true &&
+    Boolean(event.submissionId)
+  );
+}
 
 function EventIcon({ kind }: { kind: MemberHistoryEvent["kind"] }) {
   const className = "h-4 w-4";
@@ -102,10 +114,16 @@ function EventStatus({ event }: { event: MemberHistoryEvent }) {
 function HistoryDetailModal({
   event,
   onClose,
+  onCancelled,
 }: {
   event: MemberHistoryEvent;
   onClose: () => void;
+  onCancelled: () => void;
 }) {
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -118,6 +136,26 @@ function HistoryDetailModal({
       document.body.style.overflow = prev;
     };
   }, [onClose]);
+
+  const cancellable = isCancellableSubmission(event);
+
+  function handleCancel() {
+    if (!cancellable || !event.submissionId) return;
+    if (!confirmCancel) {
+      setConfirmCancel(true);
+      setError(null);
+      return;
+    }
+    startTransition(async () => {
+      const result = await cancelPaymentSubmission(event.submissionId!);
+      if (!result.success) {
+        setError(result.error);
+        setConfirmCancel(false);
+        return;
+      }
+      onCancelled();
+    });
+  }
 
   return (
     <div
@@ -199,13 +237,137 @@ function HistoryDetailModal({
               </ul>
             </div>
           ) : null}
+
+          {cancellable ? (
+            <div className="border-t border-[var(--border-subtle)] pt-4">
+              {error ? (
+                <p className="rl-alert rl-alert-error mb-3" role="alert">
+                  {error}
+                </p>
+              ) : null}
+              {confirmCancel ? (
+                <p className="type-caption mb-3 text-[var(--ink-secondary)]">
+                  Delete this submitted proof? It has not been reviewed yet. Late
+                  fees resume if the period is past grace. You can submit again
+                  afterward.
+                </p>
+              ) : null}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  className={
+                    confirmCancel
+                      ? "rl-btn rl-btn-danger-outline rl-btn-sm"
+                      : "rl-btn rl-btn-secondary rl-btn-sm"
+                  }
+                  disabled={pending}
+                  onClick={handleCancel}
+                >
+                  <Trash2 className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+                  {pending
+                    ? "Deleting…"
+                    : confirmCancel
+                      ? "Confirm delete"
+                      : "Delete submission"}
+                </button>
+                {confirmCancel ? (
+                  <button
+                    type="button"
+                    className="rl-btn rl-btn-ghost rl-btn-sm"
+                    disabled={pending}
+                    onClick={() => setConfirmCancel(false)}
+                  >
+                    Keep submitted
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
   );
 }
 
+function HistoryListCancel({
+  event,
+  onCancelled,
+}: {
+  event: MemberHistoryEvent;
+  onCancelled: () => void;
+}) {
+  const [pending, startTransition] = useTransition();
+  const [confirm, setConfirm] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const cancellable = isCancellableSubmission(event);
+
+  if (!cancellable) return null;
+
+  function handleCancel() {
+    if (!confirm) {
+      setConfirm(true);
+      setError(null);
+      return;
+    }
+    startTransition(async () => {
+      const result = await cancelPaymentSubmission(event.submissionId!);
+      if (!result.success) {
+        setError(result.error);
+        setConfirm(false);
+        return;
+      }
+      onCancelled();
+    });
+  }
+
+  return (
+    <div className="mt-3 border-t border-[var(--border-subtle)] pt-3">
+      {error ? (
+        <p className="type-caption mb-2 text-[var(--danger)]" role="alert">
+          {error}
+        </p>
+      ) : null}
+      {confirm ? (
+        <p className="type-caption mb-2 text-[var(--ink-secondary)]">
+          Delete this submitted proof? It has not been reviewed yet. You can
+          submit again afterward.
+        </p>
+      ) : null}
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          className={
+            confirm
+              ? "rl-btn rl-btn-danger-outline rl-btn-sm"
+              : "rl-btn rl-btn-secondary rl-btn-sm"
+          }
+          disabled={pending}
+          onClick={handleCancel}
+        >
+          <Trash2 className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+          {pending
+            ? "Deleting…"
+            : confirm
+              ? "Confirm delete"
+              : "Delete submission"}
+        </button>
+        {confirm ? (
+          <button
+            type="button"
+            className="rl-btn rl-btn-ghost rl-btn-sm"
+            disabled={pending}
+            onClick={() => setConfirm(false)}
+          >
+            Keep submitted
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 export function HistoryClient({ events }: { events: MemberHistoryEvent[] }) {
+  const router = useRouter();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const selected = events.find((e) => e.id === selectedId) ?? null;
 
@@ -217,11 +379,16 @@ export function HistoryClient({ events }: { events: MemberHistoryEvent[] }) {
     groups.set(key, list);
   }
 
+  function refreshAfterCancel() {
+    setSelectedId(null);
+    router.refresh();
+  }
+
   return (
     <FundCanvas>
       <PageHeader
         title="Transaction history"
-        description="Payments, verifications, and loan activity on your account."
+        description="Payments, verifications, and loan activity on your account. Unreviewed proofs can be cancelled."
       />
 
       {events.length === 0 ? (
@@ -255,13 +422,13 @@ export function HistoryClient({ events }: { events: MemberHistoryEvent[] }) {
                     >
                       <EventIcon kind={event.kind} />
                     </span>
-                    <button
-                      type="button"
-                      className="rl-history-card rl-history-card--interactive min-w-0"
-                      onClick={() => setSelectedId(event.id)}
-                      aria-haspopup="dialog"
-                    >
-                      <div className="flex min-w-0 items-start justify-between gap-3">
+                    <div className="rl-history-card min-w-0">
+                      <button
+                        type="button"
+                        className="flex w-full min-w-0 items-start justify-between gap-3 text-left"
+                        onClick={() => setSelectedId(event.id)}
+                        aria-haspopup="dialog"
+                      >
                         <div className="min-w-0">
                           <p className="type-body-sm font-semibold text-[var(--ink)]">
                             {event.title}
@@ -284,8 +451,12 @@ export function HistoryClient({ events }: { events: MemberHistoryEvent[] }) {
                             aria-hidden
                           />
                         </div>
-                      </div>
-                    </button>
+                      </button>
+                      <HistoryListCancel
+                        event={event}
+                        onCancelled={refreshAfterCancel}
+                      />
+                    </div>
                   </li>
                 ))}
               </ol>
@@ -298,6 +469,7 @@ export function HistoryClient({ events }: { events: MemberHistoryEvent[] }) {
         <HistoryDetailModal
           event={selected}
           onClose={() => setSelectedId(null)}
+          onCancelled={refreshAfterCancel}
         />
       ) : null}
     </FundCanvas>

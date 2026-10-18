@@ -32,7 +32,9 @@ import {
 } from "@/lib/finance/payment-waterfall";
 import type { PaymentTargetOption } from "@/lib/queries/member-payment-targets";
 import type { MemberKinsenasYearMap } from "@/lib/queries/member-kinsenas-year";
+import type { MemberPendingSubmission } from "@/lib/queries/member-pending-submissions";
 import { PayPeriodPicker } from "@/components/finance/pay-period-picker";
+import { PendingSubmissionCancelList } from "@/components/finance/pending-submission-cancel";
 import { PageHeader } from "@/components/ui/page-header";
 import { Money } from "@/components/ui/money";
 import type { OcrReceiptResult } from "@/app/api/ocr-receipt/route";
@@ -181,6 +183,8 @@ type PayFormProps = {
   kinsenasDue: number;
   monthlyDue: number;
   targets: PaymentTargetOption[];
+  /** Unreviewed proofs the member may cancel before treasurer review. */
+  pendingSubmissions?: MemberPendingSubmission[];
   kinsenasYearMap?: MemberKinsenasYearMap | null;
   initialTargetId?: string | null;
   setupHint?: ReactNode;
@@ -224,6 +228,7 @@ export function PayForm({
   kinsenasDue,
   monthlyDue,
   targets,
+  pendingSubmissions = [],
   kinsenasYearMap = null,
   initialTargetId = null,
   setupHint,
@@ -699,6 +704,12 @@ export function PayForm({
         title="Pay"
         description={`${headsCount} head${headsCount === 1 ? "" : "s"} · ${formatPHP(kinsenasDue)} / kinsenas · ${formatPHP(monthlyDue)} / month`}
       />
+
+      {pendingSubmissions.length > 0 ? (
+        <div className="mb-6">
+          <PendingSubmissionCancelList submissions={pendingSubmissions} />
+        </div>
+      ) : null}
 
       {targets.length === 0 ? (
         <div className="rl-panel mx-auto max-w-lg py-12 text-center">
