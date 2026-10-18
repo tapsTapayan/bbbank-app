@@ -329,6 +329,24 @@ export function VerifyWorkspace({
                 <div className="grid gap-3">
                   <AiMatchBadge item={selected} />
                   <CpePenaltyBadge item={selected} />
+                  {selected.allocationPreview.length > 0 ? (
+                    <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-subtle)] p-3.5">
+                      <p className="type-label">Auto-allocation</p>
+                      <p className="type-caption mt-1 type-muted">
+                        Oldest dues first · excess → prepaid
+                      </p>
+                      <ul className="mt-2 space-y-1">
+                        {selected.allocationPreview.map((line) => (
+                          <li
+                            key={line}
+                            className="type-caption font-mono tabular-nums text-[var(--ink-secondary)]"
+                          >
+                            {line}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
                 </div>
 
                 <dl className="grid grid-cols-2 gap-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-subtle)] p-3.5">
@@ -343,9 +361,11 @@ export function VerifyWorkspace({
                     </dd>
                   </div>
                   <div>
-                    <dt className="type-label">Target</dt>
+                    <dt className="type-label">Bucket</dt>
                     <dd className="type-body-sm mt-0.5 font-medium">
-                      {selected.targetLabel}
+                      {selected.targetType === "CONTRIBUTION"
+                        ? "Contributions"
+                        : "Loan repayments"}
                     </dd>
                   </div>
                   <div>

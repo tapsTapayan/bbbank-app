@@ -21,8 +21,18 @@ import {
 } from "@/lib/finance/payment-allocation";
 import {
   computeLiveLateFee,
+  formatKinsenaDueLabel,
+  formatKinsenaPeriodScope,
   GRACE_PERIOD_DAYS,
 } from "@/lib/finance/cpe-policy";
+import { ensureContributionCoverageForAmount } from "@/lib/finance/contribution-generator";
+import {
+  contributionWaterfallObligation,
+  formatWaterfallPreview,
+  loanWaterfallObligation,
+  planPaymentWaterfall,
+  type WaterfallPlan,
+} from "@/lib/finance/payment-waterfall";
 
 Decimal.set({ precision: 20, rounding: Decimal.ROUND_HALF_UP });
 
@@ -172,6 +182,11 @@ async function applyContributionPayment(
     },
   });
 
+  const periodLabel = formatKinsenaPeriodScope(
+    contribution.dueDate,
+    contribution.kinsenaIndex === 2 ? 2 : 1,
+  );
+
   if (allocation.toPenalty.gt(0)) {
     await tx.ledgerEntry.create({
       data: {
@@ -180,7 +195,7 @@ async function applyContributionPayment(
         paymentSubmissionId: params.paymentSubmissionId,
         entryType: "PENALTY_INCOME_IN",
         amount: new Prisma.Decimal(allocation.toPenalty.toFixed(2)),
-        description: `Contribution late fee · ref ${params.referenceNumber}`,
+        description: `Late fee · ${periodLabel} · ref ${params.referenceNumber}`,
         createdById: params.createdById,
       },
     });
@@ -193,7 +208,7 @@ async function applyContributionPayment(
         paymentSubmissionId: params.paymentSubmissionId,
         entryType: "CONTRIBUTION_IN",
         amount: new Prisma.Decimal(allocation.toPrincipal.toFixed(2)),
-        description: `Contribution payment verified · ref ${params.referenceNumber}`,
+        description: `Contribution · ${periodLabel} · ref ${params.referenceNumber}`,
         createdById: params.createdById,
       },
     });
@@ -202,43 +217,82 @@ async function applyContributionPayment(
   return allocation.leftover;
 }
 
-async function cascadeContributionLeftover(
+/** Oldest-first contribution waterfall after live fee sync. */
+async function applyContributionWaterfall(
   tx: Tx,
   params: {
     userId: string;
-    skipContributionId: string;
-    leftover: Decimal;
+    cycleId: string;
+    amount: Decimal;
+    paidAt: Date;
     paymentSubmissionId: string;
     referenceNumber: string;
     createdById: string;
   },
-): Promise<Decimal> {
-  let remaining = params.leftover;
-  if (remaining.lte(0)) return remaining;
-
-  const nextRows = await tx.contribution.findMany({
+): Promise<{ plan: WaterfallPlan; leftover: Decimal }> {
+  const openRows = await tx.contribution.findMany({
     where: {
       userId: params.userId,
-      id: { not: params.skipContributionId },
       status: { in: ["UNPAID", "PARTIAL", "OVERDUE"] },
     },
-    orderBy: { dueDate: "asc" },
+    orderBy: [{ dueDate: "asc" }, { kinsenaIndex: "asc" }],
   });
 
-  for (const row of nextRows) {
-    if (remaining.lte(0)) break;
-    remaining = await applyContributionPayment(tx, {
-      contributionId: row.id,
+  for (const row of openRows) {
+    await syncContributionPenaltyAtSubmit(tx, row.id, params.paidAt);
+  }
+
+  const refreshed = await tx.contribution.findMany({
+    where: {
+      userId: params.userId,
+      status: { in: ["UNPAID", "PARTIAL", "OVERDUE"] },
+    },
+    orderBy: [{ dueDate: "asc" }, { kinsenaIndex: "asc" }],
+  });
+
+  const obligations = refreshed
+    .map((row) =>
+      contributionWaterfallObligation({
+        id: row.id,
+        label: formatKinsenaPeriodScope(
+          row.dueDate,
+          row.kinsenaIndex === 2 ? 2 : 1,
+        ),
+        amountDue: row.amountDue.toString(),
+        amountPaid: row.amountPaid.toString(),
+        penaltyAmount: row.penaltyAmount.toString(),
+        penaltyWaivedAmount: row.penaltyWaivedAmount?.toString() ?? "0",
+      }),
+    )
+    .filter((row): row is NonNullable<typeof row> => row != null);
+
+  const plan = planPaymentWaterfall(params.amount, obligations);
+
+  for (const line of plan.lines) {
+    const row = refreshed.find((r) => r.id === line.id);
+    if (!row) continue;
+    await applyContributionPayment(tx, {
+      contributionId: line.id,
       userId: params.userId,
       cycleId: row.cycleId,
       paymentSubmissionId: params.paymentSubmissionId,
       referenceNumber: params.referenceNumber,
       createdById: params.createdById,
-      amount: remaining,
+      amount: toMoney(line.applied),
     });
   }
 
-  return remaining;
+  const allocationSummary = formatWaterfallPreview(plan).join("\n");
+  await tx.paymentSubmission.update({
+    where: { id: params.paymentSubmissionId },
+    data: {
+      contributionId: plan.primaryTargetId,
+      loanAmortizationId: null,
+      allocationSummary: allocationSummary || null,
+    },
+  });
+
+  return { plan, leftover: toMoney(plan.prepaid) };
 }
 
 async function applyLoanInstallmentPayment(
@@ -304,6 +358,7 @@ async function applyLoanInstallmentPayment(
   });
 
   const loan = installment.loan;
+  const scope = `Installment #${installment.installmentNumber} · ${formatKinsenaDueLabel(installment.dueDate)}`;
   const ledgerBase = {
     cycleId: loan.cycleId,
     userId: params.userId,
@@ -318,7 +373,7 @@ async function applyLoanInstallmentPayment(
         ...ledgerBase,
         entryType: "PENALTY_INCOME_IN",
         amount: new Prisma.Decimal(allocation.toPenalty.toFixed(2)),
-        description: `Penalty income · installment #${installment.installmentNumber} · ref ${params.referenceNumber}`,
+        description: `Late fee · ${scope} · ref ${params.referenceNumber}`,
       },
     });
   }
@@ -328,7 +383,7 @@ async function applyLoanInstallmentPayment(
         ...ledgerBase,
         entryType: "INTEREST_INCOME_IN",
         amount: new Prisma.Decimal(allocation.toInterest.toFixed(2)),
-        description: `Interest income · installment #${installment.installmentNumber} · ref ${params.referenceNumber}`,
+        description: `Interest · ${scope} · ref ${params.referenceNumber}`,
       },
     });
   }
@@ -338,7 +393,7 @@ async function applyLoanInstallmentPayment(
         ...ledgerBase,
         entryType: "PRINCIPAL_REPAYMENT_IN",
         amount: new Prisma.Decimal(allocation.toPrincipal.toFixed(2)),
-        description: `Principal repayment · installment #${installment.installmentNumber} · ref ${params.referenceNumber}`,
+        description: `Principal · ${scope} · ref ${params.referenceNumber}`,
       },
     });
   }
@@ -360,44 +415,92 @@ async function applyLoanInstallmentPayment(
   };
 }
 
-async function cascadeLoanLeftover(
+/** Oldest-first loan installment waterfall after live fee sync. */
+async function applyLoanWaterfall(
   tx: Tx,
   params: {
     loanId: string;
-    skipInstallmentId: string;
-    leftover: Decimal;
     userId: string;
+    amount: Decimal;
+    paidAt: Date;
     paymentSubmissionId: string;
     referenceNumber: string;
     createdById: string;
   },
-): Promise<Decimal> {
-  let remaining = params.leftover;
-  if (remaining.lte(0)) return remaining;
-
-  const nextRows = await tx.loanAmortization.findMany({
+): Promise<{ plan: WaterfallPlan; leftover: Decimal; cycleId: string }> {
+  const openRows = await tx.loanAmortization.findMany({
     where: {
       loanId: params.loanId,
-      id: { not: params.skipInstallmentId },
       status: { in: ["UNPAID", "PARTIAL", "OVERDUE"] },
     },
     orderBy: { installmentNumber: "asc" },
+    include: {
+      loan: { select: { cycleId: true } },
+    },
   });
 
-  for (const row of nextRows) {
-    if (remaining.lte(0)) break;
+  for (const row of openRows) {
+    await syncLoanInstallmentPenaltyAtSubmit(tx, row.id, params.paidAt);
+  }
+
+  const refreshed = await tx.loanAmortization.findMany({
+    where: {
+      loanId: params.loanId,
+      status: { in: ["UNPAID", "PARTIAL", "OVERDUE"] },
+    },
+    orderBy: { installmentNumber: "asc" },
+    include: {
+      loan: { select: { cycleId: true } },
+    },
+  });
+
+  const obligations = refreshed
+    .map((row) =>
+      loanWaterfallObligation({
+        id: row.id,
+        label: `Installment #${row.installmentNumber}`,
+        penaltyAmount: row.penaltyAmount.toString(),
+        interestComponent: row.interestComponent.toString(),
+        principalComponent: row.principalComponent.toString(),
+        amountPaid: row.amountPaid.toString(),
+      }),
+    )
+    .filter((row): row is NonNullable<typeof row> => row != null);
+
+  const plan = planPaymentWaterfall(params.amount, obligations);
+  let cycleId = refreshed[0]?.loan.cycleId;
+
+  for (const line of plan.lines) {
     const result = await applyLoanInstallmentPayment(tx, {
-      installmentId: row.id,
+      installmentId: line.id,
       userId: params.userId,
       paymentSubmissionId: params.paymentSubmissionId,
       referenceNumber: params.referenceNumber,
       createdById: params.createdById,
-      amount: remaining,
+      amount: toMoney(line.applied),
     });
-    remaining = result.leftover;
+    cycleId = result.cycleId;
   }
 
-  return remaining;
+  const allocationSummary = formatWaterfallPreview(plan).join("\n");
+  await tx.paymentSubmission.update({
+    where: { id: params.paymentSubmissionId },
+    data: {
+      loanAmortizationId: plan.primaryTargetId,
+      contributionId: null,
+      allocationSummary: allocationSummary || null,
+    },
+  });
+
+  if (!cycleId) {
+    const loan = await tx.loan.findUniqueOrThrow({
+      where: { id: params.loanId },
+      select: { cycleId: true },
+    });
+    cycleId = loan.cycleId;
+  }
+
+  return { plan, leftover: toMoney(plan.prepaid), cycleId };
 }
 
 async function creditPrepaid(
@@ -431,7 +534,7 @@ async function creditPrepaid(
       paymentSubmissionId: params.paymentSubmissionId,
       entryType: "CONTRIBUTION_IN",
       amount: new Prisma.Decimal(params.amount.toFixed(2)),
-      description: `Prepaid credit · ref ${params.referenceNumber}`,
+      description: `Prepaid credit (unallocated advance) · ref ${params.referenceNumber}`,
       createdById: params.createdById,
     },
   });
@@ -457,6 +560,38 @@ export async function verifyPaymentSubmission(
 
     if (decision === "REJECTED" && !remarks) {
       return fail("Remarks are required when rejecting a submission.");
+    }
+
+    // Open advance kinsenas before the verify transaction when contributions
+    // need coverage for this credit amount (uses global prisma, not tx).
+    if (decision === "VERIFIED") {
+      const peek = await prisma.paymentSubmission.findUnique({
+        where: { id: submissionId },
+        select: {
+          status: true,
+          targetType: true,
+          amount: true,
+          paidAt: true,
+          createdAt: true,
+          userId: true,
+          contribution: { select: { cycleId: true } },
+        },
+      });
+      if (
+        peek?.status === "PENDING_VERIFICATION" &&
+        peek.targetType === "CONTRIBUTION" &&
+        peek.contribution
+      ) {
+        const creditSource =
+          parsed.data.creditedAmount ?? peek.amount.toString();
+        await ensureContributionCoverageForAmount({
+          userId: peek.userId,
+          cycleId: peek.contribution.cycleId,
+          paymentAmount: creditSource,
+          openedById: verifier.id,
+          asOf: peek.paidAt ?? peek.createdAt,
+        });
+      }
     }
 
     const result = await prisma.$transaction(async (tx) => {
@@ -514,6 +649,7 @@ export async function verifyPaymentSubmission(
         pending.paymentChannel) as PaymentChannel;
       const referenceNumber =
         parsed.data.referenceNumber?.trim() ?? pending.referenceNumber;
+      const paidAt = pending.paidAt ?? pending.createdAt;
 
       const claimed = await tx.paymentSubmission.updateMany({
         where: { id: submissionId, status: "PENDING_VERIFICATION" },
@@ -532,31 +668,24 @@ export async function verifyPaymentSubmission(
       }
 
       if (pending.targetType === "CONTRIBUTION") {
-        if (!pending.contribution) {
-          throw new Error("Contribution target is missing on this submission.");
+        const cycleId =
+          pending.contribution?.cycleId ??
+          (
+            await tx.contribution.findFirst({
+              where: { userId: pending.userId },
+              orderBy: { dueDate: "desc" },
+              select: { cycleId: true },
+            })
+          )?.cycleId;
+        if (!cycleId) {
+          throw new Error("No contribution cycle found for this member.");
         }
 
-        // Persist live fee as of the payment transaction date (paidAt), not wall-clock verify.
-        await syncContributionPenaltyAtSubmit(
-          tx,
-          pending.contribution.id,
-          pending.paidAt ?? pending.createdAt,
-        );
-
-        let leftover = await applyContributionPayment(tx, {
-          contributionId: pending.contribution.id,
+        const { leftover } = await applyContributionWaterfall(tx, {
           userId: pending.userId,
-          cycleId: pending.contribution.cycleId,
-          paymentSubmissionId: pending.id,
-          referenceNumber,
-          createdById: verifier.id,
+          cycleId,
           amount,
-        });
-
-        leftover = await cascadeContributionLeftover(tx, {
-          userId: pending.userId,
-          skipContributionId: pending.contribution.id,
-          leftover,
+          paidAt,
           paymentSubmissionId: pending.id,
           referenceNumber,
           createdById: verifier.id,
@@ -564,7 +693,7 @@ export async function verifyPaymentSubmission(
 
         await creditPrepaid(tx, {
           userId: pending.userId,
-          cycleId: pending.contribution.cycleId,
+          cycleId,
           amount: leftover,
           paymentSubmissionId: pending.id,
           referenceNumber,
@@ -578,26 +707,11 @@ export async function verifyPaymentSubmission(
         throw new Error("Loan amortization target is missing on this submission.");
       }
 
-      await syncLoanInstallmentPenaltyAtSubmit(
-        tx,
-        pending.loanAmortization.id,
-        pending.paidAt ?? pending.createdAt,
-      );
-
-      const primary = await applyLoanInstallmentPayment(tx, {
-        installmentId: pending.loanAmortization.id,
+      const { leftover, cycleId } = await applyLoanWaterfall(tx, {
+        loanId: pending.loanAmortization.loanId,
         userId: pending.userId,
-        paymentSubmissionId: pending.id,
-        referenceNumber,
-        createdById: verifier.id,
         amount,
-      });
-
-      let leftover = await cascadeLoanLeftover(tx, {
-        loanId: primary.loanId,
-        skipInstallmentId: pending.loanAmortization.id,
-        leftover: primary.leftover,
-        userId: pending.userId,
+        paidAt,
         paymentSubmissionId: pending.id,
         referenceNumber,
         createdById: verifier.id,
@@ -605,7 +719,7 @@ export async function verifyPaymentSubmission(
 
       await creditPrepaid(tx, {
         userId: pending.userId,
-        cycleId: primary.cycleId,
+        cycleId,
         amount: leftover,
         paymentSubmissionId: pending.id,
         referenceNumber,

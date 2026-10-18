@@ -1,6 +1,6 @@
 "use client";
 
-import { useId } from "react";
+import { useId, useMemo } from "react";
 import { clsx } from "clsx";
 import { formatPHP } from "@/lib/finance/loan-calculator";
 import { formatKinsenaDueLabel } from "@/lib/finance/cpe-policy";
@@ -79,24 +79,55 @@ function halfLabel(cell: KinsenaMapCell) {
   return "EOM";
 }
 
+function periodRangeLabel(target: PaymentTargetOption): string {
+  const due = new Date(target.dueDate);
+  const month = due.toLocaleDateString("en-PH", {
+    month: "short",
+    timeZone: "UTC",
+  });
+  if (target.kinsenaIndex === 1) return `${month} 1–15`;
+  const endDay = due.getUTCDate();
+  return `${month} 16–${endDay}`;
+}
+
 function StatusCell({
   cell,
   highlighted,
+  selectable,
+  onSelect,
 }: {
   cell: KinsenaMapCell;
   highlighted: boolean;
+  selectable: boolean;
+  onSelect: () => void;
 }) {
   const title = `${MONTH_FULL[cell.monthIndex]} ${halfLabel(cell)} · ${TONE_LABEL[cell.tone]}`;
+  const className = clsx(
+    "pp-cell",
+    `pp-cell--${cell.tone}`,
+    highlighted && "is-selected",
+    selectable && "pp-cell--interactive",
+  );
+
+  if (!selectable) {
+    return (
+      <span
+        className={className}
+        title={title}
+        aria-label={title}
+        aria-hidden={cell.tone === "empty" ? true : undefined}
+      />
+    );
+  }
+
   return (
-    <span
-      className={clsx(
-        "pp-cell",
-        `pp-cell--${cell.tone}`,
-        highlighted && "is-selected",
-      )}
-      title={title}
-      aria-label={title}
-      role="img"
+    <button
+      type="button"
+      className={className}
+      title={`${title} — select period`}
+      aria-label={`${title}. Select to preview remaining balance.`}
+      aria-pressed={highlighted}
+      onClick={onSelect}
     />
   );
 }
@@ -105,11 +136,10 @@ function optionLabel(t: PaymentTargetOption) {
   const half =
     t.kinsenaIndex === 1 ? "15th" : t.kinsenaIndex === 2 ? "EOM" : "";
   const date = formatKinsenaDueLabel(new Date(t.dueDate));
-  const status = t.isOverdue ? " · Overdue" : "";
-  return `${date}${half ? ` · ${half}` : ""}${status} · ${formatPHP(t.suggestedAmount)}`;
+  return `${date}${half ? ` · ${half}` : ""}`;
 }
 
-/** Compact year status grid + period selector (Auto / specific). Grid is not interactive. */
+/** Compact year status grid + period selector. Squares set period + preview dues. */
 export function PayPeriodPicker({
   map,
   contributionTargets,
@@ -120,6 +150,13 @@ export function PayPeriodPicker({
 }: PayPeriodPickerProps) {
   const headingId = useId();
   const selectId = useId();
+  const previewId = useId();
+
+  const targetsById = useMemo(() => {
+    const m = new Map<string, PaymentTargetOption>();
+    for (const t of contributionTargets) m.set(t.id, t);
+    return m;
+  }, [contributionTargets]);
 
   const row15 = MONTHS.map((_, monthIndex) =>
     map.cells.find(
@@ -146,6 +183,14 @@ export function PayPeriodPicker({
     periodMode === "auto" ? PERIOD_AUTO : (selectedPeriodId ?? PERIOD_AUTO);
 
   const autoTarget = contributionTargets.find((t) => t.id === autoPeriodId);
+  const previewTarget = highlightId
+    ? targetsById.get(highlightId)
+    : undefined;
+
+  function selectCell(cell: KinsenaMapCell) {
+    if (!cell.id || !targetsById.has(cell.id)) return;
+    onPeriodModeChange("manual", cell.id);
+  }
 
   return (
     <section className="pp-picker" aria-labelledby={headingId}>
@@ -160,8 +205,8 @@ export function PayPeriodPicker({
 
       <div
         className="pp-grid"
-        role="img"
-        aria-label={`Kinsenas status for ${map.cycleName}`}
+        role="group"
+        aria-label={`Kinsenas status for ${map.cycleName}. Tap an open square to select that period.`}
       >
         <div className="pp-corner" aria-hidden />
         {MONTHS.map((letter, i) => (
@@ -176,6 +221,8 @@ export function PayPeriodPicker({
             key={`1-${cell.monthIndex}`}
             cell={cell}
             highlighted={Boolean(highlightId && cell.id === highlightId)}
+            selectable={Boolean(cell.id && targetsById.has(cell.id))}
+            onSelect={() => selectCell(cell)}
           />
         ))}
 
@@ -185,9 +232,45 @@ export function PayPeriodPicker({
             key={`2-${cell.monthIndex}`}
             cell={cell}
             highlighted={Boolean(highlightId && cell.id === highlightId)}
+            selectable={Boolean(cell.id && targetsById.has(cell.id))}
+            onSelect={() => selectCell(cell)}
           />
         ))}
       </div>
+
+      {previewTarget ? (
+        <div
+          className="pp-preview"
+          id={previewId}
+          aria-live="polite"
+        >
+          <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
+            <p className="type-caption font-semibold text-[var(--ink)]">
+              {periodRangeLabel(previewTarget)}
+              {previewTarget.isOverdue
+                ? " · Overdue"
+                : previewTarget.isWithinGrace
+                  ? " · In grace"
+                  : previewTarget.isAdvance
+                    ? " · Advance"
+                    : ""}
+            </p>
+            <p className="font-mono text-sm font-bold tabular-nums text-[var(--ink)]">
+              {formatPHP(previewTarget.suggestedAmount)}
+            </p>
+          </div>
+          <p className="type-caption mt-0.5 font-mono tabular-nums text-[var(--ink-muted)]">
+            {Number(previewTarget.penaltyAmount) > 0 ? (
+              <>
+                {formatPHP(previewTarget.baseRemaining)} base +{" "}
+                {formatPHP(previewTarget.penaltyAmount)} late
+              </>
+            ) : (
+              <>Remaining balance · no late fee</>
+            )}
+          </p>
+        </div>
+      ) : null}
 
       <label className="rl-field mt-3" htmlFor={selectId}>
         <span className="rl-field-label">Period</span>
@@ -195,6 +278,7 @@ export function PayPeriodPicker({
           id={selectId}
           className="rl-select"
           value={selectValue}
+          aria-describedby={previewTarget ? previewId : undefined}
           onChange={(e) => {
             const value = e.target.value;
             if (value === PERIOD_AUTO) {
@@ -206,15 +290,7 @@ export function PayPeriodPicker({
         >
           <option value={PERIOD_AUTO}>
             Auto
-            {autoTarget
-              ? ` · ${formatKinsenaDueLabel(new Date(autoTarget.dueDate))}${
-                  autoTarget.kinsenaIndex === 1
-                    ? " 15th"
-                    : autoTarget.kinsenaIndex === 2
-                      ? " EOM"
-                      : ""
-                }${autoTarget.isOverdue ? " · Overdue" : ""} · ${formatPHP(autoTarget.suggestedAmount)}`
-              : ""}
+            {autoTarget ? ` · ${optionLabel(autoTarget)}` : ""}
           </option>
           {contributionTargets.map((t) => (
             <option key={t.id} value={t.id}>

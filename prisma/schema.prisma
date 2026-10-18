@@ -309,6 +309,8 @@ model PaymentSubmission {
   auditedById        String?
   auditedAt          DateTime?
   remarks            String?
+  /// Period-scoped waterfall lines (planned on submit; replaced on verify).
+  allocationSummary  String?
   createdAt          DateTime                @default(now())
   updatedAt          DateTime                @updatedAt
 

@@ -648,12 +648,14 @@ fieldset.rl-field-attention {
 
 /* Mobile Bottom Dock */
 .rl-nav-dock {
+  overflow: visible;
   background: color-mix(in oklab, var(--surface-elevated) 94%, transparent);
   backdrop-filter: blur(14px);
   border-top: 1px solid var(--border-subtle);
   box-shadow: 0 -4px 16px rgb(0 21 41 / 0.03);
 }
 .rl-nav-bottom {
+  overflow: visible;
   min-height: var(--nav-h);
 }
 .rl-nav-link {
@@ -680,7 +682,9 @@ fieldset.rl-field-attention {
   border-radius: var(--radius-pill);
   transition:
     background-color var(--duration-fast) var(--ease-out),
-    color var(--duration-fast) var(--ease-out);
+    color var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
 }
 .rl-nav-link-active {
   color: var(--brand);
@@ -689,6 +693,26 @@ fieldset.rl-field-attention {
 .rl-nav-link-active .rl-nav-link-pill {
   background: var(--brand-soft);
   color: var(--brand);
+}
+/* Primary Pay CTA — soft brand circle, slight lift above the dock */
+.rl-nav-link--pay {
+  overflow: visible;
+  color: var(--brand);
+  font-weight: 600;
+  gap: 0.25rem;
+}
+.rl-nav-link--pay .rl-nav-link-pill {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 999px;
+  background: var(--brand);
+  color: #fff;
+  box-shadow: 0 2px 8px rgb(17 51 93 / 0.18);
+  transform: translateY(-0.3rem);
+}
+.rl-nav-link--pay.rl-nav-link-active .rl-nav-link-pill {
+  background: var(--brand);
+  color: #fff;
 }
 
 /* ——— Dashboard Architecture (Sovereign Command Center) ——— */
@@ -1074,6 +1098,51 @@ fieldset.rl-field-attention {
   background: var(--surface-elevated);
   min-width: 0;
 }
+.rl-history-card--interactive {
+  display: block;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease,
+    box-shadow 140ms ease;
+}
+.rl-history-card--interactive:hover {
+  border-color: color-mix(in srgb, var(--brand) 28%, var(--border-subtle));
+  background: color-mix(in srgb, var(--brand-soft) 45%, var(--surface-elevated));
+}
+.rl-history-card--interactive:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+.rl-history-dialog {
+  display: flex;
+  flex-direction: column;
+  max-width: 28rem;
+  max-height: min(90dvh, 36rem);
+  padding: 0;
+  overflow: hidden;
+}
+.rl-history-dialog__head {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.rl-history-dialog__body {
+  overflow-y: auto;
+  padding: var(--space-5);
+}
+.rl-history-detail-grid {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin: 0;
+}
 
 /* ——— Kinsenas Year Ledger (dashboard status overview) ——— */
 .km-ledger {
@@ -1288,11 +1357,31 @@ fieldset.rl-field-attention {
   transition:
     transform var(--duration-fast) var(--ease-out),
     box-shadow var(--duration-fast) var(--ease-out),
-    border-color var(--duration-fast) var(--ease-out);
+    border-color var(--duration-fast) var(--ease-out),
+    opacity var(--duration-fast) var(--ease-out);
+}
+.pp-cell--interactive {
+  cursor: pointer;
+}
+.pp-cell--interactive:hover {
+  transform: scale(1.12);
+  z-index: 1;
+}
+.pp-cell--interactive:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+  z-index: 1;
 }
 .pp-cell.is-selected {
   box-shadow: 0 0 0 2px var(--surface-elevated), 0 0 0 3.5px var(--brand);
   z-index: 1;
+}
+.pp-preview {
+  margin-top: var(--space-2-5);
+  padding: var(--space-2-5) var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+  background: var(--surface);
 }
 .pp-cell--empty {
   border-style: dashed;

@@ -11,6 +11,7 @@ import {
 import {
   allocateContributionPayment,
   contributionStatusAfterPayment,
+  remainingContributionDues,
   toMoney,
 } from "./payment-allocation";
 
@@ -255,6 +256,122 @@ export function kinsenaPeriodsThrough(params: {
  * - both kinsenas of the current month (half-month or full-month pay)
  * - the next kinsena after today (advance)
  */
+/** Next calendar kinsena after an existing contribution period. */
+export function nextPeriodAfter(params: {
+  periodMonth: Date;
+  kinsenaIndex: 1 | 2;
+}): { year: number; monthIndex: number; kinsenaIndex: 1 | 2 } {
+  const year = params.periodMonth.getUTCFullYear();
+  const monthIndex = params.periodMonth.getUTCMonth();
+  if (params.kinsenaIndex === 1) {
+    return { year, monthIndex, kinsenaIndex: 2 };
+  }
+  if (monthIndex === 11) {
+    return { year: year + 1, monthIndex: 0, kinsenaIndex: 1 };
+  }
+  return { year, monthIndex: monthIndex + 1, kinsenaIndex: 1 };
+}
+
+/**
+ * Ensures open contribution rows can absorb `paymentAmount` for a member:
+ * opens the payable window through the next advance, then opens further
+ * advance kinsenas (up to cycle end) until coverage ≥ amount or the cycle ends.
+ * Leftover beyond that still becomes prepaid at verify.
+ */
+export async function ensureContributionCoverageForAmount(params: {
+  userId: string;
+  cycleId: string;
+  paymentAmount: Decimal.Value;
+  openedById: string;
+  asOf?: Date;
+}): Promise<{ createdTotal: number }> {
+  const asOf = params.asOf ?? new Date();
+  const payment = toMoney(params.paymentAmount);
+  if (payment.lte(0)) return { createdTotal: 0 };
+
+  let createdTotal = 0;
+  const window = await openPayableContributionWindow({
+    openedById: params.openedById,
+    cycleId: params.cycleId,
+    asOf,
+  });
+  createdTotal += window.createdTotal;
+
+  const cycle = await prisma.fundCycle.findUniqueOrThrow({
+    where: { id: params.cycleId },
+  });
+  const cycleEndKey = periodSortKey({
+    year: cycle.endDate.getUTCFullYear(),
+    monthIndex: cycle.endDate.getUTCMonth(),
+    kinsenaIndex: 2,
+  });
+
+  for (let i = 0; i < 24; i += 1) {
+    const openRows = await prisma.contribution.findMany({
+      where: {
+        userId: params.userId,
+        cycleId: params.cycleId,
+        status: { in: ["UNPAID", "PARTIAL", "OVERDUE"] },
+      },
+      select: {
+        amountDue: true,
+        amountPaid: true,
+        penaltyAmount: true,
+        penaltyWaivedAmount: true,
+      },
+    });
+
+    let openTotal = new Decimal(0);
+    for (const row of openRows) {
+      const dues = remainingContributionDues({
+        amountDue: row.amountDue.toString(),
+        amountPaid: row.amountPaid.toString(),
+        penaltyAmount: row.penaltyAmount.toString(),
+        penaltyWaivedAmount: row.penaltyWaivedAmount?.toString() ?? "0",
+      });
+      openTotal = openTotal.plus(dues.totalDue);
+    }
+    if (payment.lte(openTotal)) break;
+
+    const latest = await prisma.contribution.findFirst({
+      where: { userId: params.userId, cycleId: params.cycleId },
+      orderBy: [{ dueDate: "desc" }, { kinsenaIndex: "desc" }],
+      select: { periodMonth: true, kinsenaIndex: true },
+    });
+    if (!latest) break;
+
+    const next = nextPeriodAfter({
+      periodMonth: latest.periodMonth,
+      kinsenaIndex: latest.kinsenaIndex as 1 | 2,
+    });
+    if (periodSortKey(next) > cycleEndKey) break;
+
+    const opened = await openKinsenaPeriod({
+      ...next,
+      cycleId: params.cycleId,
+      openedById: params.openedById,
+    });
+    createdTotal += opened.created;
+    if (opened.created === 0 && opened.skippedExisting > 0) {
+      // Period exists for others but maybe not this member — openKinsenaPeriod
+      // creates per-member; skipped means this member already has it.
+      // Avoid infinite loop if coverage still short (e.g. PAID rows only).
+      const stillMissing = await prisma.contribution.findFirst({
+        where: {
+          userId: params.userId,
+          cycleId: params.cycleId,
+          periodMonth: periodMonthDate(next.year, next.monthIndex),
+          kinsenaIndex: next.kinsenaIndex,
+        },
+        select: { id: true, status: true },
+      });
+      if (!stillMissing || stillMissing.status === "PAID") break;
+    }
+  }
+
+  return { createdTotal };
+}
+
 export async function openPayableContributionWindow(params: {
   openedById: string;
   cycleId?: string;

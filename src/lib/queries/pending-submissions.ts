@@ -7,6 +7,8 @@ import {
   GRACE_PERIOD_DAYS,
 } from "@/lib/finance/cpe-policy";
 import { remainingContributionDues } from "@/lib/finance/payment-allocation";
+import { parseAllocationSummary } from "@/lib/finance/payment-scope";
+import { planSubmissionAllocation } from "@/lib/finance/plan-submission-allocation";
 
 export type VerifyQueueItem = {
   id: string;
@@ -55,6 +57,8 @@ export type VerifyQueueItem = {
   obligationTotalRemaining: number | null;
   contributionId: string | null;
   loanAmortizationId: string | null;
+  /** Oldest-first allocation preview for the submitted amount. */
+  allocationPreview: string[];
 };
 
 function contributionLabel(periodMonth: Date, kinsenaIndex: number): string {
@@ -123,7 +127,8 @@ export async function getPendingVerificationQueue(): Promise<VerifyQueueItem[]> 
     },
   });
 
-  return rows.map((row) => {
+  return Promise.all(
+    rows.map(async (row) => {
     let targetLabel = "Payment";
     let dueDate: Date | null = null;
     let graceDeadline: Date | null = null;
@@ -237,6 +242,18 @@ export async function getPendingVerificationQueue(): Promise<VerifyQueueItem[]> 
     }
 
     const amount = Number(row.amount.toString());
+    const storedAlloc = parseAllocationSummary(row.allocationSummary);
+    const allocationPreview =
+      storedAlloc.length > 0
+        ? storedAlloc
+        : (
+            await planSubmissionAllocation({
+              userId: row.userId,
+              amount: row.amount.toString(),
+              targetType: row.targetType,
+              paidAt: row.paidAt ?? row.createdAt,
+            })
+          ).lines;
 
     return {
       id: row.id,
@@ -279,6 +296,8 @@ export async function getPendingVerificationQueue(): Promise<VerifyQueueItem[]> 
       obligationTotalRemaining,
       contributionId,
       loanAmortizationId,
+      allocationPreview,
     };
-  });
+    }),
+  );
 }

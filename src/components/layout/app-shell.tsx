@@ -142,7 +142,7 @@ const ALL_NAV: readonly NavItem[] = [
 ];
 
 const DOCK_IDS: Record<UserRole, readonly string[]> = {
-  MEMBER: ["dashboard", "pay", "loans", "profile"],
+  MEMBER: ["dashboard", "pay", "loans", "history"],
   TREASURER: ["verify", "pay", "loans-admin", "passes"],
   AUDITOR: ["audit", "passes", "dashboard", "loans"],
   ADMIN: ["members", "cycle", "kinsenas", "profile"],
@@ -393,11 +393,6 @@ export function AppShell({
     return navItems.filter((item) => !dockIds.has(item.id));
   }, [dockItems, navItems]);
 
-  const activeNavItem = useMemo(
-    () => navItems.find((item) => isNavActive(item.href, pathname)),
-    [navItems, pathname],
-  );
-
   const ops = isOpsPath(pathname);
 
   useEffect(() => {
@@ -552,7 +547,7 @@ export function AppShell({
               <BbbMark size="sm" alt="BBB" />
               <div className="min-w-0">
                 <p className="truncate text-sm font-bold tracking-tight text-[var(--ink)]">
-                  {activeNavItem?.label ?? "BBB Ledger"}
+                  BBB Ledger
                 </p>
               </div>
             </div>
@@ -587,20 +582,28 @@ export function AppShell({
             {dockItems.map((item) => {
               const Icon = item.icon;
               const active = isNavActive(item.href, pathname);
+              const isPay = item.id === "pay";
               return (
-                <li key={item.id} className="flex min-w-0 flex-1">
+                <li
+                  key={item.id}
+                  className={clsx(
+                    "flex min-w-0 flex-1",
+                    isPay && "overflow-visible",
+                  )}
+                >
                   <Link
                     href={item.href}
                     aria-current={active ? "page" : undefined}
                     className={clsx(
                       "rl-nav-link cursor-pointer",
+                      isPay && "rl-nav-link--pay",
                       active && "rl-nav-link-active",
                     )}
                   >
                     <span className="rl-nav-link-pill">
                       <Icon
-                        className="h-[19px] w-[19px]"
-                        strokeWidth={active ? 2.25 : 1.75}
+                        className={isPay ? "h-5 w-5" : "h-[19px] w-[19px]"}
+                        strokeWidth={isPay || active ? 2.25 : 1.75}
                         aria-hidden
                       />
                     </span>

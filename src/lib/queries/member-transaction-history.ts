@@ -1,6 +1,12 @@
 import { prisma } from "@/lib/db";
 import { formatPHP } from "@/lib/finance/loan-calculator";
-import { formatKinsenaDueLabel } from "@/lib/finance/cpe-policy";
+import { formatKinsenaPeriodScope } from "@/lib/finance/cpe-policy";
+import {
+  formatPaymentScopeTitle,
+  parseAllocationScopeLabels,
+  parseAllocationSummary,
+} from "@/lib/finance/payment-scope";
+import { planSubmissionAllocation } from "@/lib/finance/plan-submission-allocation";
 import type { PaymentPillStatus } from "@/lib/finance/status-labels";
 
 export type HistoryEventKind =
@@ -25,6 +31,8 @@ export type MemberHistoryEvent = {
   tone: "neutral" | "pending" | "success" | "danger" | "brand";
   pill: PaymentPillStatus | null;
   pillLabel: string | null;
+  /** Period-scoped allocation lines (planned on submit / posted on verify). */
+  allocations: string[];
 };
 
 function channelLabel(channel: string): string {
@@ -46,11 +54,14 @@ function channelLabel(channel: string): string {
 
 function paymentTargetLabel(row: {
   targetType: "CONTRIBUTION" | "LOAN_AMORTIZATION";
-  contribution: { dueDate: Date } | null;
+  contribution: { dueDate: Date; kinsenaIndex: number } | null;
   loanAmortization: { installmentNumber: number } | null;
 }): string {
   if (row.targetType === "CONTRIBUTION" && row.contribution) {
-    return `${formatKinsenaDueLabel(row.contribution.dueDate)} contribution`;
+    return `${formatKinsenaPeriodScope(
+      row.contribution.dueDate,
+      row.contribution.kinsenaIndex === 2 ? 2 : 1,
+    )} contribution`;
   }
   if (row.targetType === "LOAN_AMORTIZATION" && row.loanAmortization) {
     return `Loan installment #${row.loanAmortization.installmentNumber}`;
@@ -58,9 +69,52 @@ function paymentTargetLabel(row: {
   return row.targetType === "CONTRIBUTION" ? "Contribution" : "Loan payment";
 }
 
+/** Fallback title when allocation lines are missing. */
+function paymentPeriodTitle(row: {
+  targetType: "CONTRIBUTION" | "LOAN_AMORTIZATION";
+  contribution: {
+    periodMonth: Date;
+    kinsenaIndex: number;
+    dueDate: Date;
+  } | null;
+  loanAmortization: { installmentNumber: number } | null;
+}): string {
+  if (row.targetType === "CONTRIBUTION" && row.contribution) {
+    return `${formatKinsenaPeriodScope(
+      row.contribution.dueDate,
+      row.contribution.kinsenaIndex === 2 ? 2 : 1,
+    )} payment`;
+  }
+  if (row.targetType === "LOAN_AMORTIZATION" && row.loanAmortization) {
+    return `Installment #${row.loanAmortization.installmentNumber} payment`;
+  }
+  return row.targetType === "CONTRIBUTION"
+    ? "Contribution payment"
+    : "Loan payment";
+}
+
+/** Build allocation lines from ledger when summary is missing (legacy verifies). */
+function allocationsFromLedger(
+  entries: ReadonlyArray<{ amount: { toString(): string }; description: string }>,
+): string[] {
+  return entries.map((e) => {
+    const amt = formatPHP(e.amount.toString());
+    const scope = e.description.replace(/\s·\sref\s+\S+$/i, "").trim();
+    return `${amt} → ${scope}`;
+  });
+}
+
+function scopeTitle(allocations: string[], fallback: string): string {
+  return formatPaymentScopeTitle(
+    parseAllocationScopeLabels(allocations),
+    fallback,
+  );
+}
+
 /**
  * Member-facing activity timeline: payment submissions & reviews,
  * plus loan request / approval / release / rejection.
+ * Titles and allocations reflect oldest-first period scope.
  */
 export async function getMemberTransactionHistory(
   userId: string,
@@ -72,10 +126,16 @@ export async function getMemberTransactionHistory(
       orderBy: { createdAt: "desc" },
       take: 80,
       include: {
-        contribution: { select: { dueDate: true } },
+        contribution: {
+          select: { dueDate: true, periodMonth: true, kinsenaIndex: true },
+        },
         loanAmortization: { select: { installmentNumber: true } },
         verifiedBy: { select: { name: true } },
         auditedBy: { select: { name: true } },
+        ledgerEntries: {
+          orderBy: { createdAt: "asc" },
+          select: { amount: true, description: true, entryType: true },
+        },
       },
     }),
     prisma.loan.findMany({
@@ -95,6 +155,38 @@ export async function getMemberTransactionHistory(
     }),
   ]);
 
+  /** Backfill + persist planned scope for pending rows missing allocationSummary. */
+  const plannedById = new Map<string, string[]>();
+  await Promise.all(
+    payments
+      .filter(
+        (row) =>
+          row.status === "PENDING_VERIFICATION" &&
+          !row.allocationSummary?.trim(),
+      )
+      .map(async (row) => {
+        const planned = await planSubmissionAllocation({
+          userId,
+          amount: row.amount.toString(),
+          targetType: row.targetType,
+          paidAt: row.paidAt,
+        });
+        if (planned.lines.length === 0) return;
+        plannedById.set(row.id, planned.lines);
+        await prisma.paymentSubmission.update({
+          where: { id: row.id },
+          data: {
+            allocationSummary: planned.summary,
+            ...(planned.primaryTargetId
+              ? row.targetType === "CONTRIBUTION"
+                ? { contributionId: planned.primaryTargetId }
+                : { loanAmortizationId: planned.primaryTargetId }
+              : {}),
+          },
+        });
+      }),
+  );
+
   const events: MemberHistoryEvent[] = [];
 
   for (const row of payments) {
@@ -108,18 +200,36 @@ export async function getMemberTransactionHistory(
       year: "numeric",
       timeZone: "UTC",
     });
+    const fallbackTitle = paymentPeriodTitle(row);
+
+    const storedAlloc = parseAllocationSummary(row.allocationSummary);
+    const plannedAlloc = plannedById.get(row.id) ?? [];
+    const ledgerAlloc =
+      storedAlloc.length > 0
+        ? storedAlloc
+        : allocationsFromLedger(row.ledgerEntries);
+
+    const submitAllocations =
+      storedAlloc.length > 0
+        ? storedAlloc
+        : plannedAlloc.length > 0
+          ? plannedAlloc
+          : [];
 
     events.push({
       id: `pay-submit-${row.id}`,
       kind: "PAYMENT_SUBMITTED",
       at: row.createdAt.toISOString(),
-      title: "Payment submitted",
-      detail: `${target} · ${channel} · paid ${paidAtLabel} · ref ${row.referenceNumber}`,
+      title: scopeTitle(submitAllocations, fallbackTitle),
+      detail: `${channel} · paid ${paidAtLabel} · ref ${row.referenceNumber} · ${
+        row.targetType === "CONTRIBUTION" ? "Contributions" : "Loan repayments"
+      } bucket`,
       amount,
       amountLabel,
       tone: "pending",
       pill: "PENDING",
       pillLabel: "Submitted",
+      allocations: submitAllocations,
     });
 
     if (row.verifiedAt) {
@@ -127,19 +237,23 @@ export async function getMemberTransactionHistory(
       const verifier = row.verifiedBy?.name
         ? ` by ${row.verifiedBy.name}`
         : "";
+      const verifyAllocations = rejected ? [] : ledgerAlloc;
       events.push({
         id: `pay-verify-${row.id}`,
         kind: rejected ? "PAYMENT_REJECTED" : "PAYMENT_VERIFIED",
         at: row.verifiedAt.toISOString(),
-        title: rejected ? "Payment rejected" : "Payment verified",
+        title: rejected
+          ? scopeTitle(submitAllocations, "Payment rejected")
+          : scopeTitle(verifyAllocations, fallbackTitle),
         detail: rejected
           ? `${target}${verifier}${row.remarks ? ` · ${row.remarks}` : ""}`
-          : `${target}${verifier} · posted to ledger`,
+          : `${verifier ? verifier.trim() : "Posted"} · oldest dues first`,
         amount,
         amountLabel,
         tone: rejected ? "danger" : "success",
         pill: rejected ? "REJECTED" : "VERIFIED",
         pillLabel: rejected ? "Rejected" : "Verified",
+        allocations: verifyAllocations,
       });
     }
 
@@ -150,13 +264,16 @@ export async function getMemberTransactionHistory(
         id: `pay-audit-${row.id}`,
         kind: flagged ? "PAYMENT_FLAGGED" : "PAYMENT_AUDITED",
         at: row.auditedAt.toISOString(),
-        title: flagged ? "Payment flagged" : "Payment audited",
+        title: flagged
+          ? scopeTitle(ledgerAlloc, "Payment flagged")
+          : scopeTitle(ledgerAlloc, "Payment audited"),
         detail: `${target}${auditor}`,
         amount,
         amountLabel,
         tone: flagged ? "danger" : "brand",
         pill: flagged ? "FLAGGED" : "AUDITED",
         pillLabel: flagged ? "Flagged" : "Audited",
+        allocations: flagged ? [] : ledgerAlloc,
       });
     }
   }
@@ -176,6 +293,7 @@ export async function getMemberTransactionHistory(
       tone: "pending",
       pill: "PENDING",
       pillLabel: "Requested",
+      allocations: [],
     });
 
     if (loan.status === "REJECTED") {
@@ -190,6 +308,7 @@ export async function getMemberTransactionHistory(
         tone: "danger",
         pill: "REJECTED",
         pillLabel: "Rejected",
+        allocations: [],
       });
       continue;
     }
@@ -199,7 +318,6 @@ export async function getMemberTransactionHistory(
       : "";
 
     if (loan.disbursedAt) {
-      // Approval time is not stored separately — release covers approved + disbursed.
       events.push({
         id: `loan-out-${loan.id}`,
         kind: "LOAN_RELEASED",
@@ -211,6 +329,7 @@ export async function getMemberTransactionHistory(
         tone: "success",
         pill: "VERIFIED",
         pillLabel: "Released",
+        allocations: [],
       });
     } else if (
       loan.approvedById &&
@@ -227,6 +346,7 @@ export async function getMemberTransactionHistory(
         tone: "brand",
         pill: "AUDITED",
         pillLabel: "Approved",
+        allocations: [],
       });
     }
   }

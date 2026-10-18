@@ -2,16 +2,23 @@ import { connection } from "next/server";
 import { Decimal } from "decimal.js";
 import { requirePageUser } from "@/lib/auth/session";
 import { prisma } from "@/lib/db";
-import { remainingDues } from "@/lib/finance/loan-calculator";
+import { formatPHP, remainingDues } from "@/lib/finance/loan-calculator";
 import {
   calculateKinsenasDue,
   computeLiveLateFee,
   effectivePenaltyAmount,
   formatKinsenaDueLabel,
+  formatKinsenaPeriodScope,
   formatLateFeeBreakdown,
   GRACE_PERIOD_DAYS,
 } from "@/lib/finance/cpe-policy";
 import { remainingContributionDues } from "@/lib/finance/payment-allocation";
+import {
+  formatPaymentScopeLabel,
+  parseAllocationScopeLabels,
+  parseAllocationSummary,
+} from "@/lib/finance/payment-scope";
+import { planSubmissionAllocation } from "@/lib/finance/plan-submission-allocation";
 import { mapPaymentSubmissionStatus } from "@/lib/finance/status-labels";
 import { getMemberPaymentTargets } from "@/lib/queries/member-payment-targets";
 import { getMemberKinsenasYearMap } from "@/lib/queries/member-kinsenas-year";
@@ -95,6 +102,10 @@ async function loadDashboard(userId: string): Promise<MemberDashboardData> {
           select: { periodMonth: true, kinsenaIndex: true, dueDate: true },
         },
         loanAmortization: { select: { installmentNumber: true } },
+        ledgerEntries: {
+          orderBy: { createdAt: "asc" },
+          select: { amount: true, description: true },
+        },
       },
     }),
     getMemberPaymentTargets(userId),
@@ -286,19 +297,81 @@ async function loadDashboard(userId: string): Promise<MemberDashboardData> {
     };
   }
 
+  const recentPlanned = new Map<string, string[]>();
+  await Promise.all(
+    recent
+      .filter(
+        (p) =>
+          p.status === "PENDING_VERIFICATION" && !p.allocationSummary?.trim(),
+      )
+      .map(async (p) => {
+        const planned = await planSubmissionAllocation({
+          userId,
+          amount: p.amount.toString(),
+          targetType: p.targetType,
+          paidAt: p.paidAt,
+        });
+        if (planned.lines.length === 0) return;
+        recentPlanned.set(p.id, planned.lines);
+        await prisma.paymentSubmission.update({
+          where: { id: p.id },
+          data: {
+            allocationSummary: planned.summary,
+            ...(planned.primaryTargetId
+              ? p.targetType === "CONTRIBUTION"
+                ? { contributionId: planned.primaryTargetId }
+                : { loanAmortizationId: planned.primaryTargetId }
+              : {}),
+          },
+        });
+      }),
+  );
+
   const recentPayments: DashboardRecentPayment[] = recent.map((p) => {
-    let label = "Payment";
-    if (p.targetType === "CONTRIBUTION" && p.contribution) {
-      label = `${formatKinsenaDueLabel(p.contribution.dueDate)} contribution`;
-    } else if (p.targetType === "LOAN_AMORTIZATION" && p.loanAmortization) {
-      label = `Loan installment #${p.loanAmortization.installmentNumber}`;
-    }
+    const fallbackLabel =
+      p.targetType === "CONTRIBUTION" && p.contribution
+        ? formatKinsenaPeriodScope(
+            p.contribution.dueDate,
+            p.contribution.kinsenaIndex === 2 ? 2 : 1,
+          )
+        : p.targetType === "LOAN_AMORTIZATION" && p.loanAmortization
+          ? `Installment #${p.loanAmortization.installmentNumber}`
+          : p.targetType === "CONTRIBUTION"
+            ? "Contributions"
+            : "Loan repayments";
+
+    const stored = parseAllocationSummary(p.allocationSummary);
+    const fromLedger = p.ledgerEntries.map((e) => {
+      const amt = formatPHP(e.amount.toString());
+      const scope = e.description.replace(/\s·\sref\s+\S+$/i, "").trim();
+      return `${amt} → ${scope}`;
+    });
+    const planned = recentPlanned.get(p.id) ?? [];
+    const allocations =
+      stored.length > 0
+        ? stored
+        : p.status === "PENDING_VERIFICATION"
+          ? planned
+          : p.status === "REJECTED"
+            ? planned.length > 0
+              ? planned
+              : stored
+            : fromLedger.length > 0
+              ? fromLedger
+              : planned;
+
+    const label = formatPaymentScopeLabel(
+      parseAllocationScopeLabels(allocations),
+      fallbackLabel,
+    );
+
     return {
       id: p.id,
       label,
       amount: Number(p.amount.toString()),
       status: mapPaymentSubmissionStatus(p.status),
       date: p.createdAt.toISOString(),
+      allocations,
     };
   });
 

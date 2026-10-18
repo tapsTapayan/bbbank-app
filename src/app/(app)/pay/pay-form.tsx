@@ -25,6 +25,11 @@ import { formatPHP } from "@/lib/finance/loan-calculator";
 import { formatKinsenaDueLabel } from "@/lib/finance/cpe-policy";
 import { graceDeadlineCaption } from "@/lib/finance/status-labels";
 import { recomputePaymentTargetsAsOf } from "@/lib/finance/payment-targets-as-of";
+import {
+  amountThroughTarget,
+  formatWaterfallPreview,
+  planFromPaymentTargets,
+} from "@/lib/finance/payment-waterfall";
 import type { PaymentTargetOption } from "@/lib/queries/member-payment-targets";
 import type { MemberKinsenasYearMap } from "@/lib/queries/member-kinsenas-year";
 import { PayPeriodPicker } from "@/components/finance/pay-period-picker";
@@ -301,11 +306,25 @@ export function PayForm({
   const dues = useMemo(() => summarizeDues(liveTargets), [liveTargets]);
 
   const loanTargets = useMemo(
-    () => liveTargets.filter((t) => t.targetType === "LOAN_AMORTIZATION"),
+    () =>
+      liveTargets
+        .filter((t) => t.targetType === "LOAN_AMORTIZATION")
+        .slice()
+        .sort(
+          (a, b) =>
+            new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime(),
+        ),
     [liveTargets],
   );
   const contributionTargets = useMemo(
-    () => liveTargets.filter((t) => t.targetType === "CONTRIBUTION"),
+    () =>
+      liveTargets
+        .filter((t) => t.targetType === "CONTRIBUTION")
+        .slice()
+        .sort(
+          (a, b) =>
+            new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime(),
+        ),
     [liveTargets],
   );
   const autoPeriodId =
@@ -317,6 +336,26 @@ export function PayForm({
   const selected =
     liveTargets.find((t) => t.id === targetId) ?? liveTargets[0];
 
+  const payBucket: "CONTRIBUTION" | "LOAN_AMORTIZATION" =
+    selected?.targetType === "LOAN_AMORTIZATION"
+      ? "LOAN_AMORTIZATION"
+      : "CONTRIBUTION";
+  const bucketTargets =
+    payBucket === "LOAN_AMORTIZATION" ? loanTargets : contributionTargets;
+
+  const allocationPlan = useMemo(() => {
+    const amt = amount?.trim() || "0";
+    if (!bucketTargets.length) {
+      return planFromPaymentTargets(0, []);
+    }
+    return planFromPaymentTargets(amt, bucketTargets);
+  }, [amount, bucketTargets]);
+
+  const allocationPreview = useMemo(
+    () => formatWaterfallPreview(allocationPlan),
+    [allocationPlan],
+  );
+
   const isCash = paymentChannel === "CASH";
   const paidAtRef = useRef(paidAt);
 
@@ -324,11 +363,27 @@ export function PayForm({
     if (paidAtRef.current === paidAt) return;
     paidAtRef.current = paidAt;
     if (amountFromOcr) return;
-    const next = liveTargets.find((t) => t.id === targetId) ?? liveTargets[0];
-    if (next) {
-      setValue("amount", defaultAmountFor(next), { shouldValidate: true });
+    if (!bucketTargets.length) return;
+    const throughId =
+      periodMode === "auto"
+        ? autoPeriodId
+        : targetId && bucketTargets.some((t) => t.id === targetId)
+          ? targetId
+          : autoPeriodId;
+    if (throughId) {
+      setValue("amount", amountThroughTarget(bucketTargets, throughId), {
+        shouldValidate: true,
+      });
     }
-  }, [paidAt, liveTargets, targetId, amountFromOcr, setValue]);
+  }, [
+    paidAt,
+    bucketTargets,
+    targetId,
+    autoPeriodId,
+    periodMode,
+    amountFromOcr,
+    setValue,
+  ]);
 
   function showToast(type: "ok" | "err", message: string) {
     setToast({ type, message });
@@ -461,9 +516,31 @@ export function PayForm({
     setValue("targetId", id, { shouldValidate: true });
     setPeriodConfirmed(true);
     const next = liveTargets.find((t) => t.id === id);
-    if (next && !amountFromOcr) {
-      setValue("amount", defaultAmountFor(next), { shouldValidate: true });
+    if (!next || amountFromOcr) return;
+
+    // Period / loan chip only sets the amount preset; verify allocates oldest-first.
+    if (next.targetType === "CONTRIBUTION") {
+      const through =
+        mode === "auto"
+          ? defaultAmountFor(next)
+          : amountThroughTarget(contributionTargets, id);
+      setValue("amount", through, { shouldValidate: true });
+      return;
     }
+    setValue(
+      "amount",
+      amountThroughTarget(loanTargets, id),
+      { shouldValidate: true },
+    );
+  }
+
+  function setPayBucket(bucket: "CONTRIBUTION" | "LOAN_AMORTIZATION") {
+    if (bucket === "LOAN_AMORTIZATION") {
+      const first = loanTargets[0];
+      if (first) onTargetChange(first.id, "manual");
+      return;
+    }
+    onTargetChange(autoPeriodId || contributionTargets[0]?.id || "", "auto");
   }
 
   function attentionFor(field: AttentionField): boolean {
@@ -511,10 +588,17 @@ export function PayForm({
           });
         }
 
+        const anchorId =
+          allocationPlan.primaryTargetId ??
+          selected.id ??
+          values.targetId;
+        const anchor =
+          liveTargets.find((t) => t.id === anchorId) ?? selected;
+
         const result = await submitPaymentProof({
           amount: values.amount,
-          targetType: selected.targetType,
-          targetId: selected.id,
+          targetType: anchor.targetType,
+          targetId: anchor.id,
           paymentChannel: values.paymentChannel,
           referenceNumber: values.referenceNumber ?? "",
           receiptPath,
@@ -657,7 +741,36 @@ export function PayForm({
               ) : null}
             </div>
 
-            {useMapPicker && kinsenasYearMap ? (
+            {contributionTargets.length > 0 && loanTargets.length > 0 ? (
+              <div
+                className="flex gap-1.5 rounded-[var(--radius-md)] bg-[var(--surface-subtle)] p-1"
+                role="group"
+                aria-label="Payment bucket"
+              >
+                <button
+                  type="button"
+                  className={`rl-chip flex-1 justify-center !min-h-9 ${
+                    payBucket === "CONTRIBUTION" ? "rl-chip-selected" : ""
+                  }`}
+                  aria-pressed={payBucket === "CONTRIBUTION"}
+                  onClick={() => setPayBucket("CONTRIBUTION")}
+                >
+                  Contributions
+                </button>
+                <button
+                  type="button"
+                  className={`rl-chip flex-1 justify-center !min-h-9 ${
+                    payBucket === "LOAN_AMORTIZATION" ? "rl-chip-selected" : ""
+                  }`}
+                  aria-pressed={payBucket === "LOAN_AMORTIZATION"}
+                  onClick={() => setPayBucket("LOAN_AMORTIZATION")}
+                >
+                  Loans
+                </button>
+              </div>
+            ) : null}
+
+            {payBucket === "CONTRIBUTION" && useMapPicker && kinsenasYearMap ? (
               <PayPeriodPicker
                 map={kinsenasYearMap}
                 contributionTargets={contributionTargets}
@@ -670,16 +783,13 @@ export function PayForm({
                 }
                 onPeriodModeChange={(mode, id) => onTargetChange(id, mode)}
               />
-            ) : (
+            ) : payBucket === "CONTRIBUTION" ? (
               <label className="rl-field">
-                <span className="rl-field-label">Period</span>
+                <span className="rl-field-label">Amount through period</span>
                 <select
                   className="rl-select"
                   value={
-                    periodMode === "auto" &&
-                    selected?.targetType === "CONTRIBUTION"
-                      ? "__auto__"
-                      : targetId
+                    periodMode === "auto" ? "__auto__" : targetId
                   }
                   onChange={(e) => {
                     const value = e.target.value;
@@ -690,21 +800,20 @@ export function PayForm({
                     onTargetChange(value, "manual");
                   }}
                 >
-                  <option value="__auto__">Auto</option>
+                  <option value="__auto__">Auto (next due)</option>
                   {contributionTargets.map((t) => (
                     <option key={t.id} value={t.id}>
-                      {t.label}
-                      {t.isOverdue ? " · Overdue" : ""} ·{" "}
-                      {formatPHP(t.suggestedAmount)}
+                      Through {t.label}
+                      {t.isOverdue ? " · Overdue" : ""}
                     </option>
                   ))}
                 </select>
               </label>
-            )}
+            ) : null}
 
-            {loanTargets.length > 0 ? (
+            {payBucket === "LOAN_AMORTIZATION" && loanTargets.length > 0 ? (
               <div className="border-t border-[var(--border-subtle)] pt-3">
-                <p className="type-label mb-2">Loans</p>
+                <p className="type-label mb-2">Amount through installment</p>
                 <div className="flex flex-wrap gap-1.5">
                   {loanTargets.map((t) => {
                     const selectedRow = t.id === targetId;
@@ -944,6 +1053,7 @@ export function PayForm({
                         showSubmit={false}
                         totalOpenDues={dues.totalDues.toFixed(2)}
                         autoPeriodId={autoPeriodId}
+                        allocationPreview={allocationPreview}
                       />
                     </div>
                     <div className="rl-pay-details-dialog__foot">
@@ -988,6 +1098,7 @@ export function PayForm({
                     showSubmit
                     totalOpenDues={dues.totalDues.toFixed(2)}
                     autoPeriodId={autoPeriodId}
+                    allocationPreview={allocationPreview}
                   />
                 </section>
               )
@@ -1026,6 +1137,8 @@ type PayDetailsFieldsProps = {
   /** Sum of all open obligations (cash “pay all” preset). */
   totalOpenDues: string;
   autoPeriodId: string;
+  /** Live oldest-first allocation lines for the typed amount. */
+  allocationPreview: string[];
 };
 
 function PayDetailsSubmit({
@@ -1082,6 +1195,7 @@ function PayDetailsFields({
   showSubmit = true,
   totalOpenDues,
   autoPeriodId,
+  allocationPreview,
 }: PayDetailsFieldsProps) {
   const showAllOpen =
     Number(totalOpenDues) > Number(selected?.suggestedAmount ?? 0) + 0.001;
@@ -1100,36 +1214,38 @@ function PayDetailsFields({
         >
           <div className="min-w-0">
             <p className="type-label sr-only" id="selected-target-heading">
-              Selected period
+              Payment allocation
             </p>
             <div className="flex flex-wrap items-center gap-2">
-              <p className="type-heading">{selectedTitle}</p>
+              <p className="type-heading">Auto-allocation</p>
               {selected.isOverdue ? (
-                <span className="rl-pill rl-pill-rejected">Overdue</span>
+                <span className="rl-pill rl-pill-rejected">Overdue first</span>
               ) : selected.isAdvance ? (
-                <span className="rl-pill rl-pill-audited">Advance</span>
+                <span className="rl-pill rl-pill-audited">Includes advance</span>
               ) : null}
               {attentionFor("period") ? (
                 <AttentionBadge label="Confirm" />
               ) : null}
             </div>
-            <p className="type-caption mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono tabular-nums">
-              <span>Due {formatUtcDate(selected.dueDate)}</span>
-              <span>·</span>
-              <span>
-                {graceDeadlineCaption(selected.graceDeadline, {
-                  isWithinGrace: selected.isWithinGrace,
-                  isAdvance: selected.isAdvance,
-                  isOverdue: selected.isOverdue,
-                })}
-              </span>
+            <p className="type-caption mt-1 type-muted">
+              Oldest dues first · excess becomes prepaid credit
             </p>
-            <p className="type-caption mt-1 font-mono tabular-nums type-muted">
-              {formatPHP(selected.suggestedAmount)}
-              {hasLateFee
-                ? ` · ${formatPHP(selected.baseRemaining)} base + ${formatPHP(selected.penaltyAmount)} late`
-                : " due"}
-            </p>
+            {allocationPreview.length > 0 ? (
+              <ul className="mt-2 space-y-1">
+                {allocationPreview.map((line) => (
+                  <li
+                    key={line}
+                    className="type-caption font-mono tabular-nums text-[var(--ink-secondary)]"
+                  >
+                    {line}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="type-caption mt-2 type-muted">
+                Enter an amount to see where it will apply.
+              </p>
+            )}
           </div>
 
           <div
@@ -1237,6 +1353,17 @@ function PayDetailsFields({
                   {formatPHP(selected.penaltyAmount)}
                 </p>
               ) : null}
+              <p className="type-caption font-semibold tabular-nums text-[var(--ink)]">
+                Remaining balance{" "}
+                <span className="font-mono">{formatPHP(selected.suggestedAmount)}</span>
+                {hasLateFee ? (
+                  <span className="font-normal text-[var(--ink-muted)]">
+                    {" "}
+                    ({formatPHP(selected.baseRemaining)} +{" "}
+                    {formatPHP(selected.penaltyAmount)} late)
+                  </span>
+                ) : null}
+              </p>
             </div>
           ) : null}
         </div>

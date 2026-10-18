@@ -7,6 +7,7 @@ import { requireAppUser } from "@/lib/auth/session";
 import { fail, ok, type ActionResult } from "@/lib/action-result";
 import { prisma } from "@/lib/db";
 import { dateOnlyUTC } from "@/lib/finance/cpe-policy";
+import { planSubmissionAllocation } from "@/lib/finance/plan-submission-allocation";
 
 const paymentChannelSchema = z.enum([
   "GCASH",
@@ -185,14 +186,25 @@ export async function submitPaymentProof(
       }
     }
 
+    const planned = await planSubmissionAllocation({
+      userId: member.id,
+      amount: data.amount,
+      targetType: data.targetType,
+      paidAt,
+    });
+
+    // Anchor to the first period that will receive funds (oldest-first), not the
+    // member's amount preset — history / verify scope follow this plan.
+    const anchorId = planned.primaryTargetId ?? data.targetId;
+
     const submission = await prisma.paymentSubmission.create({
       data: {
         userId: member.id,
         targetType: data.targetType,
         contributionId:
-          data.targetType === "CONTRIBUTION" ? data.targetId : null,
+          data.targetType === "CONTRIBUTION" ? anchorId : null,
         loanAmortizationId:
-          data.targetType === "LOAN_AMORTIZATION" ? data.targetId : null,
+          data.targetType === "LOAN_AMORTIZATION" ? anchorId : null,
         amount: new Prisma.Decimal(data.amount),
         paymentChannel: data.paymentChannel,
         referenceNumber,
@@ -209,6 +221,7 @@ export async function submitPaymentProof(
               `Cash payment attested for ${data.paidAt} (no receipt image).`
             : data.aiConfidenceNote,
         status: "PENDING_VERIFICATION",
+        allocationSummary: planned.summary,
       },
       select: { id: true },
     });
@@ -216,6 +229,7 @@ export async function submitPaymentProof(
     revalidatePath("/dashboard");
     revalidatePath("/pay");
     revalidatePath("/verify");
+    revalidatePath("/history");
 
     return ok(
       { id: submission.id },

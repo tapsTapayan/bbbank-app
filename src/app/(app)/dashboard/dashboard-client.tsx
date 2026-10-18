@@ -22,6 +22,8 @@ export type DashboardRecentPayment = {
   amount: number;
   status: PaymentPillStatus;
   date: string;
+  /** Period-scoped allocation lines (planned on submit / posted on verify). */
+  allocations: string[];
 };
 
 export type NextKinsenasObligation = {
@@ -359,11 +361,14 @@ export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
             ) : (
               <ul className="rl-dash-list mt-3">
                 {recentPayments.map((payment) => (
-                  <li key={payment.id} className="rl-dash-list-item">
-                    <div className="min-w-0">
-                      <p className="type-body-sm truncate font-semibold">
-                        {payment.label}
-                      </p>
+                  <li key={payment.id} className="rl-dash-list-item !items-start">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="type-body-sm min-w-0 font-semibold">
+                          {payment.label}
+                        </p>
+                        <StatusPill status={payment.status} />
+                      </div>
                       <p className="type-caption mt-0.5 font-mono tabular-nums">
                         {new Date(payment.date).toLocaleDateString("en-PH", {
                           month: "short",
@@ -371,8 +376,19 @@ export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
                         })}{" "}
                         · {formatPHP(payment.amount)}
                       </p>
+                      {payment.allocations.length > 0 ? (
+                        <ul className="mt-1.5 space-y-0.5">
+                          {payment.allocations.map((line) => (
+                            <li
+                              key={line}
+                              className="type-caption font-mono tabular-nums text-[var(--ink-muted)]"
+                            >
+                              {line}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
                     </div>
-                    <StatusPill status={payment.status} />
                   </li>
                 ))}
               </ul>

@@ -282,6 +282,19 @@ export function formatKinsenaDueLabel(dueDate: Date): string {
   return `${d} ${month} ${y}`;
 }
 
+/** Period range label, e.g. "Jan 1–15" / "Jan 16–30". */
+export function formatKinsenaPeriodScope(
+  dueDate: Date,
+  kinsenaIndex: 1 | 2,
+): string {
+  const month = dueDate.toLocaleDateString("en-PH", {
+    month: "short",
+    timeZone: "UTC",
+  });
+  if (kinsenaIndex === 1) return `${month} 1–15`;
+  return `${month} 16–${dueDate.getUTCDate()}`;
+}
+
 /** Month heading for grouping, e.g. "January 2026". */
 export function formatKinsenaMonthLabel(dueDate: Date): string {
   return dueDate.toLocaleDateString("en-PH", {
