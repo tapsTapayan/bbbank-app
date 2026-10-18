@@ -1,0 +1,259 @@
+// BBBank — Sinking Fund & Micro-Lending
+// Exact currency: Decimal @db.Decimal(12, 2) → PostgreSQL NUMERIC(12, 2)
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  MEMBER
+  TREASURER
+  AUDITOR
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum ContributionStatus {
+  UNPAID
+  PARTIAL
+  PAID
+  OVERDUE
+}
+
+enum InterestType {
+  FLAT
+  DIMINISHING
+}
+
+enum LoanStatus {
+  PENDING
+  APPROVED
+  ACTIVE
+  COMPLETED
+  DEFAULTED
+  REJECTED
+}
+
+enum AmortizationStatus {
+  UNPAID
+  PARTIAL
+  PAID
+  OVERDUE
+}
+
+enum PaymentTargetType {
+  CONTRIBUTION
+  LOAN_AMORTIZATION
+}
+
+enum PaymentChannel {
+  GCASH
+  MAYA
+  BANK_TRANSFER
+  CASH
+}
+
+enum PaymentSubmissionStatus {
+  PENDING_VERIFICATION
+  VERIFIED
+  REJECTED
+  AUDITED
+  FLAGGED
+}
+
+enum LedgerEntryType {
+  CONTRIBUTION_IN
+  LOAN_DISBURSEMENT_OUT
+  PRINCIPAL_REPAYMENT_IN
+  INTEREST_INCOME_IN
+  PENALTY_INCOME_IN
+  REVERSAL_ADJUSTMENT
+}
+
+// ─── Models ──────────────────────────────────────────────────────────────────
+
+model User {
+  id        String     @id @default(cuid())
+  name      String
+  email     String     @unique
+  role      UserRole   @default(MEMBER)
+  status    UserStatus @default(ACTIVE)
+  createdAt DateTime   @default(now())
+
+  contributions         Contribution[]
+  loans                 Loan[]                 @relation("LoanBorrower")
+  approvedLoans         Loan[]                 @relation("LoanApprover")
+  paymentSubmissions    PaymentSubmission[]    @relation("PaymentSubmitter")
+  verifiedPayments      PaymentSubmission[]    @relation("PaymentVerifier")
+  auditedPayments       PaymentSubmission[]    @relation("PaymentAuditor")
+  ledgerEntries         LedgerEntry[]          @relation("LedgerUser")
+  createdLedgerEntries  LedgerEntry[]          @relation("LedgerCreator")
+
+  @@index([role])
+  @@index([status])
+  @@map("users")
+}
+
+model FundCycle {
+  id                 String   @id @default(cuid())
+  name               String
+  contributionAmount Decimal  @db.Decimal(12, 2)
+  loanInterestRate   Decimal  @db.Decimal(8, 6) // e.g. 0.020000 = 2%/mo
+  penaltyRate        Decimal  @db.Decimal(8, 6)
+  startDate          DateTime @db.Date
+  endDate            DateTime @db.Date
+  isActive           Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  contributions Contribution[]
+  loans         Loan[]
+  ledgerEntries LedgerEntry[]
+
+  @@index([isActive])
+  @@map("fund_cycles")
+}
+
+model Contribution {
+  id         String             @id @default(cuid())
+  userId     String
+  cycleId    String
+  periodMonth DateTime          @db.Date // first day of the contribution month
+  amountDue  Decimal            @db.Decimal(12, 2)
+  amountPaid Decimal            @default(0) @db.Decimal(12, 2)
+  status     ContributionStatus @default(UNPAID)
+  dueDate    DateTime           @db.Date
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+
+  user                User                 @relation(fields: [userId], references: [id], onDelete: Restrict)
+  cycle               FundCycle            @relation(fields: [cycleId], references: [id], onDelete: Restrict)
+  paymentSubmissions  PaymentSubmission[]
+
+  @@unique([userId, cycleId, periodMonth])
+  @@index([cycleId, status])
+  @@index([userId, status])
+  @@index([dueDate])
+  @@map("contributions")
+}
+
+model Loan {
+  id              String        @id @default(cuid())
+  borrowerId      String
+  cycleId         String
+  principalAmount Decimal       @db.Decimal(12, 2)
+  interestRate    Decimal       @db.Decimal(8, 6) // monthly rate
+  termMonths      Int
+  interestType    InterestType
+  status          LoanStatus    @default(PENDING)
+  approvedById    String?
+  disbursedAt     DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  borrower      User               @relation("LoanBorrower", fields: [borrowerId], references: [id], onDelete: Restrict)
+  cycle         FundCycle          @relation(fields: [cycleId], references: [id], onDelete: Restrict)
+  approvedBy    User?              @relation("LoanApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  amortizations LoanAmortization[]
+  ledgerEntries LedgerEntry[]
+
+  @@index([borrowerId, status])
+  @@index([cycleId, status])
+  @@index([status])
+  @@map("loans")
+}
+
+model LoanAmortization {
+  id                 String              @id @default(cuid())
+  loanId             String
+  installmentNumber  Int
+  dueDate            DateTime            @db.Date
+  principalComponent Decimal             @db.Decimal(12, 2)
+  interestComponent  Decimal             @db.Decimal(12, 2)
+  penaltyAmount      Decimal             @default(0) @db.Decimal(12, 2)
+  amountPaid         Decimal             @default(0) @db.Decimal(12, 2)
+  status             AmortizationStatus  @default(UNPAID)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  loan               Loan                @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  paymentSubmissions PaymentSubmission[]
+
+  @@unique([loanId, installmentNumber])
+  @@index([loanId, status])
+  @@index([dueDate, status])
+  @@map("loan_amortizations")
+}
+
+model PaymentSubmission {
+  id                  String                  @id @default(cuid())
+  userId              String
+  targetType          PaymentTargetType
+  contributionId      String?
+  loanAmortizationId  String?
+  amount              Decimal                 @db.Decimal(12, 2)
+  paymentChannel      PaymentChannel
+  referenceNumber     String
+  receiptUrl          String
+  status              PaymentSubmissionStatus @default(PENDING_VERIFICATION)
+  verifiedById        String?
+  verifiedAt          DateTime?
+  auditedById         String?
+  auditedAt           DateTime?
+  remarks             String?
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+
+  user               User              @relation("PaymentSubmitter", fields: [userId], references: [id], onDelete: Restrict)
+  contribution       Contribution?     @relation(fields: [contributionId], references: [id], onDelete: SetNull)
+  loanAmortization   LoanAmortization? @relation(fields: [loanAmortizationId], references: [id], onDelete: SetNull)
+  verifiedBy         User?             @relation("PaymentVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+  auditedBy          User?             @relation("PaymentAuditor", fields: [auditedById], references: [id], onDelete: SetNull)
+  ledgerEntries      LedgerEntry[]
+
+  // Anti-fraud: one reference number per payment channel
+  @@unique([paymentChannel, referenceNumber])
+  @@index([status, createdAt])
+  @@index([userId, status])
+  @@index([contributionId])
+  @@index([loanAmortizationId])
+  @@map("payment_submissions")
+}
+
+/// Append-only double-entry ledger. Balances are derived — never overwrite rows.
+model LedgerEntry {
+  id                  String          @id @default(cuid())
+  cycleId             String
+  userId              String
+  paymentSubmissionId String?
+  loanId              String?
+  entryType           LedgerEntryType
+  amount              Decimal         @db.Decimal(12, 2)
+  description         String
+  createdById         String
+  createdAt           DateTime        @default(now())
+
+  cycle             FundCycle          @relation(fields: [cycleId], references: [id], onDelete: Restrict)
+  user              User               @relation("LedgerUser", fields: [userId], references: [id], onDelete: Restrict)
+  paymentSubmission PaymentSubmission? @relation(fields: [paymentSubmissionId], references: [id], onDelete: SetNull)
+  loan              Loan?              @relation(fields: [loanId], references: [id], onDelete: SetNull)
+  createdBy         User               @relation("LedgerCreator", fields: [createdById], references: [id], onDelete: Restrict)
+
+  @@index([cycleId, createdAt])
+  @@index([userId, entryType])
+  @@index([loanId])
+  @@index([paymentSubmissionId])
+  @@map("ledger_entries")
+}

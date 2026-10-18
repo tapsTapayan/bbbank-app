@@ -1,0 +1,24 @@
+# Project Context: Multi-User Sinking Fund & Micro-Lending PWA
+
+## Core Tech Stack
+- Framework: Next.js 15+ (App Router), React, TypeScript (strict mode)
+- Styling & UI: Tailwind CSS, shadcn/ui, Lucide React, Vaul (mobile drawers), TanStack Table (desktop data grids)
+- Database & ORM: PostgreSQL (Supabase/Neon) with Prisma ORM
+- Auth & Storage: Supabase Auth (or Firebase Auth) + Private Bucket Storage for payment receipt images
+- Validation & Forms: React Hook Form + Zod
+- PWA: Serwist or @ducanh2912/next-pwa
+
+## Architectural & Financial Rules (STRICT)
+1. **Exact Currency Math**: Never use standard JavaScript floats for money. Use `Decimal` in Prisma (`@db.Numeric(12, 2)`) or store amounts in integer centavos. Default currency is Philippine Peso (`₱` / `PHP`).
+2. **Append-Only Double-Entry Ledger**: Never overwrite a user's balance directly. All verified contributions, loan disbursements, principal repayments, interest, and penalties must be recorded as immutable rows in a `LedgerEntry` table. Current balances are derived from verified ledger entries.
+3. **Maker-Checker-Auditor State Machine**:
+   - `MEMBER`: Submits contributions/loan payments (`PENDING_VERIFICATION`) with receipt image & reference number, requests loans, views personal schedules.
+   - `TREASURER`: Reviews pending submissions side-by-side with receipt image, marks `VERIFIED` or `REJECTED`, approves/disburses loans.
+   - `AUDITOR`: Read-only access to all records, marks `VERIFIED` records as `AUDITED` or `FLAGGED`. Once `AUDITED`, records are strictly immutable.
+   - `ADMIN`: Configures fund cycle rules (contribution amount, interest rates, loan caps, penalty rates) and user roles.
+4. **Anti-Fraud**: Enforce a unique database constraint on `(paymentChannel, referenceNumber)` in `PaymentSubmission` to prevent duplicate receipt uploads.
+5. **Payment Allocation Order**: Loan repayments must allocate funds in this strict order: Penalties -> Interest -> Principal.
+
+## Dual-Interface UX Requirements
+- **Route Group `(member-mobile)`**: Mobile-first PWA interface with a fixed bottom navigation bar (`<768px`), summary cards, and swipeable bottom drawers (`vaul`) for quick receipt uploads and loan tracking.
+- **Route Group `(management-console)`**: Wide-screen desktop workstation (`>=768px`) with a collapsible sidebar, high-density `TanStack Table` grids, and a split-screen verification view (zoomable receipt image on the left, approval controls on the right).
