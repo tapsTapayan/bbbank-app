@@ -10,6 +10,7 @@ import {
   ClipboardCheck,
   Ellipsis,
   HandCoins,
+  History,
   Home,
   PanelLeftClose,
   PanelLeftOpen,
@@ -63,6 +64,14 @@ const ALL_NAV: readonly NavItem[] = [
     href: "/loans",
     label: "Loans",
     icon: HandCoins,
+    roles: ["MEMBER", "TREASURER", "AUDITOR"],
+    section: "fund",
+  },
+  {
+    id: "history",
+    href: "/history",
+    label: "History",
+    icon: History,
     roles: ["MEMBER", "TREASURER", "AUDITOR"],
     section: "fund",
   },
@@ -559,13 +568,13 @@ export function AppShell({
             "flex min-h-0 min-w-0 flex-1 flex-col",
             ops
               ? "overflow-hidden bg-[var(--surface)] pb-[calc(var(--nav-h)+env(safe-area-inset-bottom))] md:pb-0"
-              : "rl-canvas overflow-x-hidden overflow-y-auto",
+              : "rl-canvas min-w-0 overflow-x-clip overflow-y-auto",
           )}
         >
           {ops ? (
             children
           ) : (
-            <div className="rl-fund-main w-full min-w-0">{children}</div>
+            <div className="rl-fund-main w-full min-w-0 max-w-full">{children}</div>
           )}
         </div>
 

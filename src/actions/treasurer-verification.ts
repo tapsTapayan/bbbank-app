@@ -48,7 +48,8 @@ type Tx = Prisma.TransactionClient;
 async function syncContributionPenaltyAtSubmit(
   tx: Tx,
   contributionId: string,
-  submittedAt: Date,
+  /** Payment transaction date (paidAt) — Rule #3 as-of clock. */
+  paidAt: Date,
 ): Promise<void> {
   const contribution = await tx.contribution.findUniqueOrThrow({
     where: { id: contributionId },
@@ -62,10 +63,10 @@ async function syncContributionPenaltyAtSubmit(
     dueDate: contribution.dueDate,
     openedAt: contribution.createdAt,
     headsCount: contribution.headsSnapshot,
-    now: submittedAt,
+    now: paidAt,
     gracePeriodDays: contribution.cycle.gracePeriodDays ?? GRACE_PERIOD_DAYS,
     ratePerHeadPerDay: contribution.cycle.penaltyRate.toString(),
-    pendingSubmittedAt: submittedAt,
+    pendingSubmittedAt: paidAt,
   });
 
   await tx.contribution.update({
@@ -84,7 +85,8 @@ async function syncContributionPenaltyAtSubmit(
 async function syncLoanInstallmentPenaltyAtSubmit(
   tx: Tx,
   installmentId: string,
-  submittedAt: Date,
+  /** Payment transaction date (paidAt) — Rule #3 as-of clock. */
+  paidAt: Date,
 ): Promise<void> {
   const installment = await tx.loanAmortization.findUniqueOrThrow({
     where: { id: installmentId },
@@ -104,10 +106,10 @@ async function syncLoanInstallmentPenaltyAtSubmit(
     dueDate: installment.dueDate,
     openedAt: installment.createdAt,
     headsCount: heads,
-    now: submittedAt,
+    now: paidAt,
     gracePeriodDays: installment.loan.cycle.gracePeriodDays ?? GRACE_PERIOD_DAYS,
     ratePerHeadPerDay: installment.loan.cycle.penaltyRate.toString(),
-    pendingSubmittedAt: submittedAt,
+    pendingSubmittedAt: paidAt,
   });
 
   await tx.loanAmortization.update({
@@ -534,11 +536,11 @@ export async function verifyPaymentSubmission(
           throw new Error("Contribution target is missing on this submission.");
         }
 
-        // Persist frozen/live fee at submit before allocation (not stale DB value).
+        // Persist live fee as of the payment transaction date (paidAt), not wall-clock verify.
         await syncContributionPenaltyAtSubmit(
           tx,
           pending.contribution.id,
-          pending.createdAt,
+          pending.paidAt ?? pending.createdAt,
         );
 
         let leftover = await applyContributionPayment(tx, {
@@ -579,7 +581,7 @@ export async function verifyPaymentSubmission(
       await syncLoanInstallmentPenaltyAtSubmit(
         tx,
         pending.loanAmortization.id,
-        pending.createdAt,
+        pending.paidAt ?? pending.createdAt,
       );
 
       const primary = await applyLoanInstallmentPayment(tx, {

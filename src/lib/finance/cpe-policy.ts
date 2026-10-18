@@ -163,22 +163,17 @@ export function computeGraceDeadline(
 }
 
 /**
- * When an obligation is opened on the books after its calendar grace already
- * elapsed (year-to-date catch-up), late fees must not rewind to the historical
- * due date. Anchor accrual to the open/create day instead.
+ * Rule #3 accrual always starts from the obligation due date (not open/create
+ * day). Catch-up opens still flag `isCatchUp` for UI, but late fees use the
+ * policy due → asOf − grace formula so dues reflect chargeable days after
+ * policy grace has lapsed.
  */
 export function effectiveDueDateForPenalty(
   dueDate: Date,
-  openedAt: Date,
-  gracePeriodDays: number = GRACE_PERIOD_DAYS,
+  _openedAt?: Date,
+  _gracePeriodDays: number = GRACE_PERIOD_DAYS,
 ): Date {
-  const policyDue = startOfLocalDay(dueDate);
-  const opened = startOfLocalDay(openedAt);
-  const graceDeadline = computeGraceDeadline(policyDue, gracePeriodDays);
-  if (opened > graceDeadline) {
-    return opened;
-  }
-  return policyDue;
+  return startOfLocalDay(dueDate);
 }
 
 export type RejectedPenaltyWindow = {
@@ -212,9 +207,8 @@ export function effectiveAsOfForPenaltyAccrual(input: {
 
 export type LiveLateFeeResult = LateFeeBreakdown & {
   /**
-   * True when the obligation was opened after policy grace already elapsed.
-   * Accrual may still be in a catch-up “soft grace” from open day — that must
-   * not be labelled “In grace” against the historical graceDeadline.
+   * True when the obligation was opened after policy grace already elapsed
+   * (year-to-date catch-up). Accrual still follows Rule #3 from due date.
    */
   isCatchUp: boolean;
   /** Original dueDate + gracePeriodDays (what the UI should show as grace end). */
@@ -233,7 +227,8 @@ export function isCatchUpOpen(
 }
 
 /**
- * Live Rule #3 fee with catch-up due anchoring + pending freeze + reject resume.
+ * Live Rule #3 fee with pending freeze + reject resume.
+ * Catch-up opens are flagged but do not change the due-date accrual clock.
  */
 export function computeLiveLateFee(params: {
   dueDate: Date;
@@ -255,11 +250,7 @@ export function computeLiveLateFee(params: {
     params.openedAt,
     gracePeriodDays,
   );
-  const penaltyDue = effectiveDueDateForPenalty(
-    params.dueDate,
-    params.openedAt,
-    gracePeriodDays,
-  );
+  const penaltyDue = effectiveDueDateForPenalty(params.dueDate);
   const asOf = effectiveAsOfForPenaltyAccrual({
     now: params.now,
     pendingSubmittedAt: params.pendingSubmittedAt,
@@ -271,11 +262,10 @@ export function computeLiveLateFee(params: {
   });
   return {
     ...fee,
-    // Accrual-relative graceDeadline can be the catch-up anchor; expose policy.
     graceDeadline: policyGraceDeadline,
     isCatchUp,
     policyGraceDeadline,
-    // Never claim CPE "in grace" against a past policy grace window.
+    // Catch-up rows are past policy grace by definition — never “In grace”.
     isWithinGrace: isCatchUp ? false : fee.isWithinGrace,
   };
 }

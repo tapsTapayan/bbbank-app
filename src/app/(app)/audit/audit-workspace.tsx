@@ -111,7 +111,7 @@ export function AuditWorkspace({ queue }: { queue: AuditQueueItem[] }) {
       ) : (
         <>
           <div
-            className="rl-ops-tabs md:hidden"
+            className="rl-ops-tabs lg:hidden"
             role="tablist"
             aria-label="Audit panes"
           >
@@ -135,7 +135,7 @@ export function AuditWorkspace({ queue }: { queue: AuditQueueItem[] }) {
             ))}
           </div>
 
-          <SplitView variant="triple" className="min-h-0 flex-1">
+          <SplitView variant="triple" className="min-h-0 min-w-0 flex-1">
             <SplitPane
               className={clsx(
                 mobilePane === "queue" ? "flex" : "hidden md:flex",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -15,15 +15,19 @@ import {
   Banknote,
   Receipt,
   CalendarClock,
+  X,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { submitPaymentProof } from "@/actions/payment-submission";
 import { compressReceiptImage } from "@/lib/storage/compress-receipt";
 import { compressAndUploadReceipt } from "@/lib/storage/upload-receipt";
 import { formatPHP } from "@/lib/finance/loan-calculator";
+import { formatKinsenaDueLabel } from "@/lib/finance/cpe-policy";
+import { graceDeadlineCaption } from "@/lib/finance/status-labels";
+import { recomputePaymentTargetsAsOf } from "@/lib/finance/payment-targets-as-of";
 import type { PaymentTargetOption } from "@/lib/queries/member-payment-targets";
 import type { MemberKinsenasYearMap } from "@/lib/queries/member-kinsenas-year";
-import { KinsenasYearMap } from "@/components/finance/kinsenas-year-map";
+import { PayPeriodPicker } from "@/components/finance/pay-period-picker";
 import { PageHeader } from "@/components/ui/page-header";
 import { Money } from "@/components/ui/money";
 import type { OcrReceiptResult } from "@/app/api/ocr-receipt/route";
@@ -224,7 +228,10 @@ export function PayForm({
   const [scanning, setScanning] = useState(false);
   const [isValidReceipt, setIsValidReceipt] = useState<boolean | null>(null);
   const [scanFailed, setScanFailed] = useState(false);
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [lateFeeOpen, setLateFeeOpen] = useState(false);
+  const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false);
+  /** null until matchMedia runs — avoids desktop/mobile flash on first paint */
+  const [isMobile, setIsMobile] = useState<boolean | null>(null);
   const [toast, setToast] = useState<{
     type: "ok" | "err";
     message: string;
@@ -233,34 +240,21 @@ export function PayForm({
   const [amountFromOcr, setAmountFromOcr] = useState(false);
   const [ocrSettled, setOcrSettled] = useState(false);
   const [periodConfirmed, setPeriodConfirmed] = useState(Boolean(initialTargetId));
-
-  const dues = summarizeDues(targets);
-  const periodMeta = useMemo(() => {
-    const meta: Record<string, { amount: number; penalty: number }> = {};
-    for (const t of targets) {
-      if (t.targetType !== "CONTRIBUTION") continue;
-      meta[t.id] = {
-        amount: Number(t.suggestedAmount) || 0,
-        penalty: Number(t.penaltyAmount) || 0,
-      };
-    }
-    return meta;
-  }, [targets]);
-
-  const loanTargets = useMemo(
-    () => targets.filter((t) => t.targetType === "LOAN_AMORTIZATION"),
-    [targets],
+  /** Auto follows earliest overdue/open; manual is an explicit period pick. */
+  const [periodMode, setPeriodMode] = useState<"auto" | "manual">(
+    initialTargetId ? "manual" : "auto",
   );
+
   const linkedTarget =
     initialTargetId && targets.some((t) => t.id === initialTargetId)
       ? initialTargetId
       : null;
-  const defaultTargetId =
-    linkedTarget ??
-    dues.earliestOverdueId ??
-    dues.earliestOpenId ??
+  const initialAutoId =
+    targets.find((t) => t.isOverdue)?.id ??
+    targets.find((t) => t.targetType === "CONTRIBUTION")?.id ??
     targets[0]?.id ??
     "";
+  const defaultTargetId = linkedTarget ?? initialAutoId;
   const defaultTarget = targets.find((t) => t.id === defaultTargetId);
 
   const form = useForm<PayFormValues>({
@@ -293,9 +287,48 @@ export function PayForm({
   const referenceNumber = watch("referenceNumber");
   const confidenceNote = watch("aiConfidenceNote");
   const aiChannel = watch("aiExtractedChannel");
-  const selected = targets.find((t) => t.id === targetId) ?? targets[0];
+
+  /** Dues / late fees as of the payment transaction date (Rule #3). */
+  const liveTargets = useMemo(
+    () =>
+      recomputePaymentTargetsAsOf(
+        targets,
+        paidAt?.trim() || todayLocalIsoDate(),
+      ),
+    [targets, paidAt],
+  );
+
+  const dues = useMemo(() => summarizeDues(liveTargets), [liveTargets]);
+
+  const loanTargets = useMemo(
+    () => liveTargets.filter((t) => t.targetType === "LOAN_AMORTIZATION"),
+    [liveTargets],
+  );
+  const contributionTargets = useMemo(
+    () => liveTargets.filter((t) => t.targetType === "CONTRIBUTION"),
+    [liveTargets],
+  );
+  const autoPeriodId =
+    dues.earliestOverdueId ??
+    dues.earliestOpenId ??
+    contributionTargets[0]?.id ??
+    liveTargets[0]?.id ??
+    "";
+  const selected =
+    liveTargets.find((t) => t.id === targetId) ?? liveTargets[0];
 
   const isCash = paymentChannel === "CASH";
+  const paidAtRef = useRef(paidAt);
+
+  useEffect(() => {
+    if (paidAtRef.current === paidAt) return;
+    paidAtRef.current = paidAt;
+    if (amountFromOcr) return;
+    const next = liveTargets.find((t) => t.id === targetId) ?? liveTargets[0];
+    if (next) {
+      setValue("amount", defaultAmountFor(next), { shouldValidate: true });
+    }
+  }, [paidAt, liveTargets, targetId, amountFromOcr, setValue]);
 
   function showToast(type: "ok" | "err", message: string) {
     setToast({ type, message });
@@ -319,8 +352,7 @@ export function PayForm({
   function applyAmountPreset(nextAmount: string, preferTargetId?: string) {
     setAmountFromOcr(false);
     if (preferTargetId) {
-      setValue("targetId", preferTargetId, { shouldValidate: true });
-      setPeriodConfirmed(true);
+      onTargetChange(preferTargetId, "manual");
     }
     setValue("amount", nextAmount, { shouldValidate: true });
   }
@@ -330,18 +362,18 @@ export function PayForm({
     if (Math.abs(ocrAmount - dues.totalDues) < 0.011) {
       const anchor = dues.earliestOverdueId ?? dues.earliestOpenId;
       if (anchor) {
-        setValue("targetId", anchor, { shouldValidate: true });
+        onTargetChange(anchor, "auto");
       }
       return;
     }
-    const exact = targets.find(
+    const exact = liveTargets.find(
       (t) =>
         t.suggestedAmount === fixed ||
         t.baseRemaining === fixed ||
         t.monthlyTotalSuggestedAmount === fixed,
     );
     if (exact) {
-      setValue("targetId", exact.id, { shouldValidate: true });
+      onTargetChange(exact.id, "manual");
     }
   }
 
@@ -424,10 +456,11 @@ export function PayForm({
     }
   }
 
-  function onTargetChange(id: string) {
+  function onTargetChange(id: string, mode: "auto" | "manual" = "manual") {
+    setPeriodMode(mode);
     setValue("targetId", id, { shouldValidate: true });
     setPeriodConfirmed(true);
-    const next = targets.find((t) => t.id === id);
+    const next = liveTargets.find((t) => t.id === id);
     if (next && !amountFromOcr) {
       setValue("amount", defaultAmountFor(next), { shouldValidate: true });
     }
@@ -521,20 +554,55 @@ export function PayForm({
   }
 
   const canSubmit =
-    targets.length > 0 &&
+    liveTargets.length > 0 &&
     !scanning &&
     !pending &&
     Boolean(paidAt) &&
     (isCash || Boolean(compressedFile));
 
-  const targetGroups = groupTargets(targets);
+  /** Details only after cash mode or receipt OCR has finished. */
+  const detailsReady = isCash || (ocrSettled && !scanning);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 767px)");
+    const sync = () => setIsMobile(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
+    if (!detailsReady) {
+      setMobileDetailsOpen(false);
+      return;
+    }
+    if (isMobile === true) setMobileDetailsOpen(true);
+  }, [detailsReady, isMobile]);
+
+  useEffect(() => {
+    if (isMobile !== true || !mobileDetailsOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMobileDetailsOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [isMobile, mobileDetailsOpen]);
+
+  const targetGroups = groupTargets(liveTargets);
   const hasLateFee = selected ? Number(selected.penaltyAmount) > 0 : false;
   const useMapPicker = Boolean(kinsenasYearMap);
 
   const selectedTitle = selected
     ? selected.targetType === "CONTRIBUTION"
-      ? `${selected.label} · ${selected.kinsenaIndex === 1 ? "15th Kinsenas" : "EOM Kinsenas"}`
-      : selected.label
+      ? `${formatKinsenaDueLabel(new Date(selected.dueDate))} · ${
+          selected.kinsenaIndex === 1 ? "15th Kinsenas" : "EOM Kinsenas"
+        }`
+      : selected.label.replace(/\s·\s₱[\d,]+\.\d{2}$/, "")
     : "Select an obligation";
 
   return (
@@ -590,86 +658,76 @@ export function PayForm({
             </div>
 
             {useMapPicker && kinsenasYearMap ? (
-              <KinsenasYearMap
+              <PayPeriodPicker
                 map={kinsenasYearMap}
-                variant="open"
-                selectedPeriodId={targetId}
-                onSelectPeriod={(id) => onTargetChange(id)}
-                periodMeta={periodMeta}
+                contributionTargets={contributionTargets}
+                autoPeriodId={autoPeriodId}
+                periodMode={
+                  selected?.targetType === "CONTRIBUTION" ? periodMode : "auto"
+                }
+                selectedPeriodId={
+                  selected?.targetType === "CONTRIBUTION" ? targetId : undefined
+                }
+                onPeriodModeChange={(mode, id) => onTargetChange(id, mode)}
               />
             ) : (
-              <div className="rl-stack-sm">
-                <p className="type-label">Select Period</p>
-                <ul className="km-period-list">
-                  {targets.map((t) => {
-                    const selectedRow = t.id === targetId;
-                    return (
-                      <li key={t.id}>
-                        <button
-                          type="button"
-                          className={`km-period-row${selectedRow ? " is-selected" : ""}`}
-                          aria-pressed={selectedRow}
-                          onClick={() => onTargetChange(t.id)}
-                        >
-                          <span
-                            className={`km-period-rail${t.isOverdue ? " km-period-rail--overdue" : " km-period-rail--due"}`}
-                            aria-hidden
-                          />
-                          <span className="km-period-main">
-                            <span className="km-period-date">{t.label}</span>
-                            <span
-                              className={`km-period-status${t.isOverdue ? " km-period-status--overdue" : " km-period-status--due"}`}
-                            >
-                              {t.isOverdue
-                                ? "Overdue"
-                                : t.isAdvance
-                                  ? "Advance"
-                                  : "Due"}
-                            </span>
-                          </span>
-                          <span className="km-period-amount">
-                            {formatPHP(t.suggestedAmount)}
-                          </span>
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
+              <label className="rl-field">
+                <span className="rl-field-label">Period</span>
+                <select
+                  className="rl-select"
+                  value={
+                    periodMode === "auto" &&
+                    selected?.targetType === "CONTRIBUTION"
+                      ? "__auto__"
+                      : targetId
+                  }
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value === "__auto__") {
+                      onTargetChange(autoPeriodId, "auto");
+                      return;
+                    }
+                    onTargetChange(value, "manual");
+                  }}
+                >
+                  <option value="__auto__">Auto</option>
+                  {contributionTargets.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.label}
+                      {t.isOverdue ? " · Overdue" : ""} ·{" "}
+                      {formatPHP(t.suggestedAmount)}
+                    </option>
+                  ))}
+                </select>
+              </label>
             )}
 
-            {useMapPicker && loanTargets.length > 0 ? (
-              <div className="border-t border-[var(--border-subtle)] pt-4">
-                <p className="type-label mb-2.5">Loan Installments</p>
-                <ul className="km-period-list">
+            {loanTargets.length > 0 ? (
+              <div className="border-t border-[var(--border-subtle)] pt-3">
+                <p className="type-label mb-2">Loans</p>
+                <div className="flex flex-wrap gap-1.5">
                   {loanTargets.map((t) => {
                     const selectedRow = t.id === targetId;
                     return (
-                      <li key={t.id}>
-                        <button
-                          type="button"
-                          className={`km-period-row${selectedRow ? " is-selected" : ""}`}
-                          aria-pressed={selectedRow}
-                          onClick={() => onTargetChange(t.id)}
-                        >
-                          <span
-                            className={`km-period-rail${t.isOverdue ? " km-period-rail--overdue" : " km-period-rail--due"}`}
-                            aria-hidden
-                          />
-                          <span className="km-period-main">
-                            <span className="km-period-date">{t.label}</span>
-                            <span className="km-period-status km-period-status--due">
-                              Loan Amortization
-                            </span>
-                          </span>
-                          <span className="km-period-amount">
-                            {formatPHP(t.suggestedAmount)}
-                          </span>
-                        </button>
-                      </li>
+                      <button
+                        key={t.id}
+                        type="button"
+                        className={`rl-chip !min-h-8 !px-2.5 ${
+                          selectedRow ? "rl-chip-selected" : ""
+                        }`}
+                        aria-pressed={selectedRow}
+                        onClick={() => onTargetChange(t.id)}
+                      >
+                        <span className="truncate max-w-[7.5rem] sm:max-w-[9rem]">
+                          {t.label}
+                        </span>
+                        <span className="shrink-0 font-mono tabular-nums">
+                          {formatPHP(t.suggestedAmount)}
+                        </span>
+                      </button>
                     );
                   })}
-                </ul>
+                </div>
               </div>
             ) : null}
 
@@ -698,138 +756,9 @@ export function PayForm({
             ) : null}
           </aside>
 
-          {/* Right Continuous Workstation: Obligation Summary + AI Receipt Scanner + Payment Details */}
+          {/* Right Continuous Workstation: Receipt + Details */}
           <div className="rl-pay-work">
-            {/* 1. Selected Obligation Context & Quick Presets */}
-            {selected ? (
-              <section
-                className="rl-panel rl-stack"
-                aria-labelledby="selected-target-heading"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--border-subtle)] pb-4">
-                  <div className="min-w-0">
-                    <p className="type-label sr-only" id="selected-target-heading">
-                      Selected period
-                    </p>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="type-heading">{selectedTitle}</h2>
-                      {selected.isOverdue ? (
-                        <span className="rl-pill rl-pill-rejected">Overdue</span>
-                      ) : selected.isAdvance ? (
-                        <span className="rl-pill rl-pill-audited">Advance</span>
-                      ) : null}
-                      {attentionFor("period") ? (
-                        <AttentionBadge label="Confirm" />
-                      ) : null}
-                    </div>
-                    <p className="type-caption mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono tabular-nums">
-                      <span>Due {formatUtcDate(selected.dueDate)}</span>
-                      <span>·</span>
-                      <span>Grace ends {formatUtcDate(selected.graceDeadline)}</span>
-                    </p>
-                  </div>
-
-                  <div className="text-left sm:text-right">
-                    <p className="type-label">Amount due</p>
-                    <p className="type-metric mt-1">
-                      {formatPHP(selected.suggestedAmount)}
-                    </p>
-                    {hasLateFee ? (
-                      <p className="type-caption mt-0.5 font-mono text-[var(--warning)] tabular-nums">
-                        {formatPHP(selected.baseRemaining)} base +{" "}
-                        {formatPHP(selected.penaltyAmount)} late
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-
-                {/* Quick Amount Presets */}
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      className={`rl-chip ${
-                        amount === selected.suggestedAmount
-                          ? "rl-chip-selected"
-                          : ""
-                      }`}
-                      onClick={() => applyAmountPreset(selected.suggestedAmount)}
-                    >
-                      {hasLateFee ? "Due + late" : "Due"}{" "}
-                      {formatPHP(selected.suggestedAmount)}
-                    </button>
-                    {hasLateFee ? (
-                      <button
-                        type="button"
-                        className={`rl-chip ${
-                          amount === selected.baseRemaining
-                            ? "rl-chip-selected"
-                            : ""
-                        }`}
-                        onClick={() => applyAmountPreset(selected.baseRemaining)}
-                      >
-                        Base {formatPHP(selected.baseRemaining)}
-                      </button>
-                    ) : null}
-                    {selected.targetType === "CONTRIBUTION" &&
-                    selected.monthlyTotalSuggestedAmount !==
-                      selected.suggestedAmount ? (
-                      <button
-                        type="button"
-                        className={`rl-chip ${
-                          amount === selected.monthlyTotalSuggestedAmount
-                            ? "rl-chip-selected"
-                            : ""
-                        }`}
-                        onClick={() =>
-                          applyAmountPreset(selected.monthlyTotalSuggestedAmount)
-                        }
-                      >
-                        Full Month ({formatPHP(selected.monthlyTotalSuggestedAmount)})
-                      </button>
-                    ) : null}
-                  </div>
-
-                  <button
-                    type="button"
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--brand)] hover:underline"
-                    aria-expanded={detailsOpen}
-                    onClick={() => setDetailsOpen((o) => !o)}
-                  >
-                    <CalendarClock className="h-3.5 w-3.5" aria-hidden />
-                    <span>Late fee</span>
-                    <ChevronDown
-                      className={`h-3.5 w-3.5 transition-transform duration-200 ${
-                        detailsOpen ? "rotate-180" : ""
-                      }`}
-                      aria-hidden
-                    />
-                  </button>
-                </div>
-
-                {detailsOpen ? (
-                  <div className="rl-inset space-y-1.5">
-                    <p className="type-caption font-medium text-[var(--ink)]">
-                      Due {formatUtcDate(selected.dueDate)} · Grace{" "}
-                      {formatUtcDate(selected.graceDeadline)}
-                    </p>
-                    <p className="type-caption">{selected.lateFeeBreakdown}</p>
-                    {hasLateFee ? (
-                      <p className="font-mono text-xs font-semibold text-[var(--warning)] tabular-nums">
-                        Formula: {selected.daysDelayed} chargeable day
-                        {selected.daysDelayed === 1 ? "" : "s"} × ₱
-                        {selected.penaltyRatePerHeadPerDay}/head/day ×{" "}
-                        {selected.headsSnapshot} head
-                        {selected.headsSnapshot === 1 ? "" : "s"} ={" "}
-                        {formatPHP(selected.penaltyAmount)}
-                      </p>
-                    ) : null}
-                  </div>
-                ) : null}
-              </section>
-            ) : null}
-
-            {/* 2. Smart Receipt Proof & AI OCR Scanner */}
+            {/* 1. Smart Receipt Proof & AI OCR Scanner */}
             <section
               className="rl-panel rl-stack"
               aria-labelledby="pay-proof-heading"
@@ -851,7 +780,7 @@ export function PayForm({
                     }}
                   >
                     <Banknote className="h-3.5 w-3.5" aria-hidden />
-                    Cash payment
+                    Switch to cash
                   </button>
                 ) : (
                   <button
@@ -865,7 +794,7 @@ export function PayForm({
                     }}
                   >
                     <Receipt className="h-3.5 w-3.5" aria-hidden />
-                    Digital receipt
+                    Switch to receipt
                   </button>
                 )}
               </div>
@@ -953,189 +882,509 @@ export function PayForm({
               ) : null}
             </section>
 
-            {/* 3. Payment Confirmation Form (Always Accessible) */}
-            <section
-              className="rl-panel rl-stack"
-              aria-labelledby="pay-details-heading"
-            >
-              <div className="border-b border-[var(--border-subtle)] pb-3">
-                <h2 id="pay-details-heading" className="type-title">
-                  Details
-                </h2>
-              </div>
+            {/* 2. Details — only after cash mode or receipt OCR finishes */}
+            {detailsReady && isMobile === true && !mobileDetailsOpen ? (
+              <button
+                type="button"
+                className="rl-btn rl-btn-primary rl-btn-lg rl-btn-block"
+                onClick={() => setMobileDetailsOpen(true)}
+              >
+                Review & submit
+              </button>
+            ) : null}
 
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label
-                  className={`rl-field sm:col-span-2 ${
-                    attentionFor("amount") ? "rl-field-attention" : ""
-                  }`}
+            {detailsReady &&
+            ((isMobile === true && mobileDetailsOpen) ||
+              isMobile === false) ? (
+              isMobile ? (
+                <div
+                  className="rl-modal-backdrop"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="pay-details-heading"
+                  onClick={(e) => {
+                    if (e.target === e.currentTarget) {
+                      setMobileDetailsOpen(false);
+                    }
+                  }}
                 >
-                  <span className="rl-field-label">
-                    Amount Paid (PHP)
-                    {attentionFor("amount") ? <AttentionBadge /> : null}
-                  </span>
-                  <div className="relative">
-                    <span
-                      className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 font-mono text-base font-bold text-[var(--ink-muted)]"
-                      aria-hidden
-                    >
-                      ₱
-                    </span>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      {...register("amount")}
-                      className="rl-input pl-8 font-mono text-lg font-bold tabular-nums"
-                    />
-                  </div>
-                  {errors.amount ? (
-                    <span
-                      className="type-caption text-[var(--danger)]"
-                      role="alert"
-                    >
-                      {errors.amount.message}
-                    </span>
-                  ) : null}
-                </label>
-
-                <fieldset
-                  className={`rl-field sm:col-span-2 ${
-                    attentionFor("channel") ? "rl-field-attention" : ""
-                  }`}
-                >
-                  <legend className="rl-field-label mb-1.5">
-                    Payment Channel
-                    {attentionFor("channel") ? <AttentionBadge /> : null}
-                  </legend>
-                  <div
-                    className="grid grid-cols-2 gap-2 sm:grid-cols-5"
-                    role="radiogroup"
-                    aria-label="Payment channel"
-                  >
-                    {CHANNELS.map((c) => {
-                      const active = paymentChannel === c.value;
-                      return (
-                        <button
-                          key={c.value}
-                          type="button"
-                          role="radio"
-                          aria-checked={active}
-                          className={`rl-chip ${
-                            active ? "rl-chip-selected" : ""
-                          }`}
-                          onClick={() => {
-                            setValue("paymentChannel", c.value, {
-                              shouldValidate: true,
-                            });
-                            if (c.value !== "CASH") {
-                              setValue("aiExtractedChannel", c.value);
-                            }
-                          }}
-                        >
-                          {c.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </fieldset>
-
-                <label
-                  className={`rl-field ${
-                    attentionFor("paidAt") ? "rl-field-attention" : ""
-                  }`}
-                >
-                  <span className="rl-field-label">
-                    Transaction Date
-                    {attentionFor("paidAt") ? <AttentionBadge /> : null}
-                  </span>
-                  <input
-                    type="date"
-                    max={todayLocalIsoDate()}
-                    {...register("paidAt")}
-                    className="rl-input font-mono"
-                  />
-                  {errors.paidAt ? (
-                    <span
-                      className="type-caption text-[var(--danger)]"
-                      role="alert"
-                    >
-                      {errors.paidAt.message}
-                    </span>
-                  ) : null}
-                </label>
-
-                {paymentChannel === "CASH" ? (
-                  <input type="hidden" {...register("referenceNumber")} />
-                ) : (
-                  <label
-                    className={`rl-field ${
-                      attentionFor("reference") ? "rl-field-attention" : ""
-                    }`}
-                  >
-                    <span className="rl-field-label">
-                      Reference Number
-                      {attentionFor("reference") ? <AttentionBadge /> : null}
-                    </span>
-                    <input
-                      type="text"
-                      {...register("referenceNumber")}
-                      placeholder="e.g. 901234567890"
-                      autoComplete="off"
-                      className="rl-input font-mono"
-                    />
-                    {errors.referenceNumber ? (
-                      <span
-                        className="type-caption text-[var(--danger)]"
-                        role="alert"
+                  <div className="rl-modal-dialog rl-pay-details-dialog">
+                    <div className="rl-pay-details-dialog__head">
+                      <h2 id="pay-details-heading" className="type-title">
+                        Details
+                      </h2>
+                      <button
+                        type="button"
+                        className="rl-icon-btn rl-icon-btn-sm"
+                        aria-label="Close details"
+                        onClick={() => setMobileDetailsOpen(false)}
                       >
-                        {errors.referenceNumber.message}
-                      </span>
-                    ) : null}
-                  </label>
-                )}
-              </div>
-
-              <input type="hidden" {...register("aiExtractedAmount")} />
-              <input type="hidden" {...register("aiExtractedRefNo")} />
-              <input type="hidden" {...register("aiExtractedChannel")} />
-              <input type="hidden" {...register("aiConfidenceNote")} />
-
-              {toast ? (
-                <p
-                  className={
-                    toast.type === "ok"
-                      ? "rl-alert rl-alert-ok"
-                      : "rl-alert rl-alert-error"
-                  }
-                  role="status"
-                  aria-live="polite"
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                    <div className="rl-pay-details-dialog__body rl-stack">
+                      <PayDetailsFields
+                        selected={selected}
+                        selectedTitle={selectedTitle}
+                        hasLateFee={hasLateFee}
+                        isCash={isCash}
+                        amount={amount}
+                        paymentChannel={paymentChannel}
+                        lateFeeOpen={lateFeeOpen}
+                        setLateFeeOpen={setLateFeeOpen}
+                        attentionFor={attentionFor}
+                        applyAmountPreset={applyAmountPreset}
+                        register={register}
+                        setValue={setValue}
+                        errors={errors}
+                        toast={toast}
+                        canSubmit={canSubmit}
+                        pending={pending}
+                        compressedFile={compressedFile}
+                        showSubmit={false}
+                        totalOpenDues={dues.totalDues.toFixed(2)}
+                        autoPeriodId={autoPeriodId}
+                      />
+                    </div>
+                    <div className="rl-pay-details-dialog__foot">
+                      <PayDetailsSubmit
+                        canSubmit={canSubmit}
+                        pending={pending}
+                        isCash={isCash}
+                        compressedFile={compressedFile}
+                        amount={amount}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <section
+                  className="rl-panel rl-stack"
+                  aria-labelledby="pay-details-heading"
                 >
-                  {toast.message}
-                </p>
-              ) : null}
+                  <div className="border-b border-[var(--border-subtle)] pb-3">
+                    <h2 id="pay-details-heading" className="type-title">
+                      Details
+                    </h2>
+                  </div>
+                  <PayDetailsFields
+                    selected={selected}
+                    selectedTitle={selectedTitle}
+                    hasLateFee={hasLateFee}
+                    isCash={isCash}
+                    amount={amount}
+                    paymentChannel={paymentChannel}
+                    lateFeeOpen={lateFeeOpen}
+                    setLateFeeOpen={setLateFeeOpen}
+                    attentionFor={attentionFor}
+                    applyAmountPreset={applyAmountPreset}
+                    register={register}
+                    setValue={setValue}
+                    errors={errors}
+                    toast={toast}
+                    canSubmit={canSubmit}
+                    pending={pending}
+                    compressedFile={compressedFile}
+                    showSubmit
+                    totalOpenDues={dues.totalDues.toFixed(2)}
+                    autoPeriodId={autoPeriodId}
+                  />
+                </section>
+              )
+            ) : null}
 
-              <div className="border-t border-[var(--border-subtle)] pt-3">
-                <button
-                  type="submit"
-                  disabled={!canSubmit}
-                  className="rl-btn rl-btn-primary rl-btn-lg rl-btn-block"
-                >
-                  {pending ? (
-                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                  ) : (
-                    <Upload className="h-4 w-4" aria-hidden />
-                  )}
-                  {pending
-                    ? "Submitting…"
-                    : !isCash && !compressedFile
-                      ? "Attach receipt to submit"
-                      : `Submit ${formatPHP(Number(amount) || 0)}`}
-                </button>
-              </div>
-            </section>
+            <input type="hidden" {...register("aiExtractedAmount")} />
+            <input type="hidden" {...register("aiExtractedRefNo")} />
+            <input type="hidden" {...register("aiExtractedChannel")} />
+            <input type="hidden" {...register("aiConfidenceNote")} />
           </div>
         </div>
       )}
     </form>
+  );
+}
+
+type PayDetailsFieldsProps = {
+  selected: PaymentTargetOption | undefined;
+  selectedTitle: string;
+  hasLateFee: boolean;
+  isCash: boolean;
+  amount: string;
+  paymentChannel: PayFormValues["paymentChannel"];
+  lateFeeOpen: boolean;
+  setLateFeeOpen: (updater: boolean | ((o: boolean) => boolean)) => void;
+  attentionFor: (field: AttentionField) => boolean;
+  applyAmountPreset: (nextAmount: string, preferTargetId?: string) => void;
+  register: ReturnType<typeof useForm<PayFormValues>>["register"];
+  setValue: ReturnType<typeof useForm<PayFormValues>>["setValue"];
+  errors: ReturnType<typeof useForm<PayFormValues>>["formState"]["errors"];
+  toast: { type: "ok" | "err"; message: string } | null;
+  canSubmit: boolean;
+  pending: boolean;
+  compressedFile: File | null;
+  showSubmit?: boolean;
+  /** Sum of all open obligations (cash “pay all” preset). */
+  totalOpenDues: string;
+  autoPeriodId: string;
+};
+
+function PayDetailsSubmit({
+  canSubmit,
+  pending,
+  isCash,
+  compressedFile,
+  amount,
+}: {
+  canSubmit: boolean;
+  pending: boolean;
+  isCash: boolean;
+  compressedFile: File | null;
+  amount: string;
+}) {
+  return (
+    <button
+      type="submit"
+      disabled={!canSubmit}
+      className="rl-btn rl-btn-primary rl-btn-lg rl-btn-block"
+    >
+      {pending ? (
+        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+      ) : (
+        <Upload className="h-4 w-4" aria-hidden />
+      )}
+      {pending
+        ? "Submitting…"
+        : !isCash && !compressedFile
+          ? "Attach receipt to submit"
+          : `Submit ${formatPHP(Number(amount) || 0)}`}
+    </button>
+  );
+}
+
+function PayDetailsFields({
+  selected,
+  selectedTitle,
+  hasLateFee,
+  isCash,
+  amount,
+  paymentChannel,
+  lateFeeOpen,
+  setLateFeeOpen,
+  attentionFor,
+  applyAmountPreset,
+  register,
+  setValue,
+  errors,
+  toast,
+  canSubmit,
+  pending,
+  compressedFile,
+  showSubmit = true,
+  totalOpenDues,
+  autoPeriodId,
+}: PayDetailsFieldsProps) {
+  const showAllOpen =
+    Number(totalOpenDues) > Number(selected?.suggestedAmount ?? 0) + 0.001;
+  const showFullMonth =
+    selected?.targetType === "CONTRIBUTION" &&
+    selected.monthlyTotalSuggestedAmount !== selected.suggestedAmount &&
+    Number(selected.monthlyTotalSuggestedAmount) <
+      Number(totalOpenDues) - 0.001;
+
+  return (
+    <>
+      {selected ? (
+        <div
+          className="space-y-3 border-b border-[var(--border-subtle)] pb-4"
+          aria-labelledby="selected-target-heading"
+        >
+          <div className="min-w-0">
+            <p className="type-label sr-only" id="selected-target-heading">
+              Selected period
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="type-heading">{selectedTitle}</p>
+              {selected.isOverdue ? (
+                <span className="rl-pill rl-pill-rejected">Overdue</span>
+              ) : selected.isAdvance ? (
+                <span className="rl-pill rl-pill-audited">Advance</span>
+              ) : null}
+              {attentionFor("period") ? (
+                <AttentionBadge label="Confirm" />
+              ) : null}
+            </div>
+            <p className="type-caption mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono tabular-nums">
+              <span>Due {formatUtcDate(selected.dueDate)}</span>
+              <span>·</span>
+              <span>
+                {graceDeadlineCaption(selected.graceDeadline, {
+                  isWithinGrace: selected.isWithinGrace,
+                  isAdvance: selected.isAdvance,
+                  isOverdue: selected.isOverdue,
+                })}
+              </span>
+            </p>
+            <p className="type-caption mt-1 font-mono tabular-nums type-muted">
+              {formatPHP(selected.suggestedAmount)}
+              {hasLateFee
+                ? ` · ${formatPHP(selected.baseRemaining)} base + ${formatPHP(selected.penaltyAmount)} late`
+                : " due"}
+            </p>
+          </div>
+
+          <div
+            className={`flex flex-wrap items-center gap-3 ${
+              isCash ? "justify-between" : "justify-end"
+            }`}
+          >
+            {isCash ? (
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  className={`rl-chip ${
+                    amount === selected.suggestedAmount
+                      ? "rl-chip-selected"
+                      : ""
+                  }`}
+                  onClick={() => applyAmountPreset(selected.suggestedAmount)}
+                >
+                  {hasLateFee ? "Due + late" : "Due"}{" "}
+                  {formatPHP(selected.suggestedAmount)}
+                </button>
+                {hasLateFee ? (
+                  <button
+                    type="button"
+                    className={`rl-chip ${
+                      amount === selected.baseRemaining
+                        ? "rl-chip-selected"
+                        : ""
+                    }`}
+                    onClick={() => applyAmountPreset(selected.baseRemaining)}
+                  >
+                    Base {formatPHP(selected.baseRemaining)}
+                  </button>
+                ) : null}
+                {showFullMonth ? (
+                  <button
+                    type="button"
+                    className={`rl-chip ${
+                      amount === selected.monthlyTotalSuggestedAmount
+                        ? "rl-chip-selected"
+                        : ""
+                    }`}
+                    onClick={() =>
+                      applyAmountPreset(selected.monthlyTotalSuggestedAmount)
+                    }
+                  >
+                    Full month (
+                    {formatPHP(selected.monthlyTotalSuggestedAmount)})
+                  </button>
+                ) : null}
+                {showAllOpen ? (
+                  <button
+                    type="button"
+                    className={`rl-chip ${
+                      amount === totalOpenDues ? "rl-chip-selected" : ""
+                    }`}
+                    onClick={() =>
+                      applyAmountPreset(
+                        totalOpenDues,
+                        autoPeriodId || undefined,
+                      )
+                    }
+                  >
+                    All open ({formatPHP(totalOpenDues)})
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+
+            <button
+              type="button"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--brand)] hover:underline"
+              aria-expanded={lateFeeOpen}
+              onClick={() => setLateFeeOpen((o) => !o)}
+            >
+              <CalendarClock className="h-3.5 w-3.5" aria-hidden />
+              <span>Late fee</span>
+              <ChevronDown
+                className={`h-3.5 w-3.5 transition-transform duration-200 ${
+                  lateFeeOpen ? "rotate-180" : ""
+                }`}
+                aria-hidden
+              />
+            </button>
+          </div>
+
+          {lateFeeOpen ? (
+            <div className="rl-inset space-y-1.5">
+              <p className="type-caption font-medium text-[var(--ink)]">
+                Due {formatUtcDate(selected.dueDate)} ·{" "}
+                {graceDeadlineCaption(selected.graceDeadline, {
+                  isWithinGrace: selected.isWithinGrace,
+                  isAdvance: selected.isAdvance,
+                  isOverdue: selected.isOverdue,
+                })}
+              </p>
+              <p className="type-caption">{selected.lateFeeBreakdown}</p>
+              {hasLateFee ? (
+                <p className="font-mono text-xs font-semibold text-[var(--warning)] tabular-nums">
+                  Formula: {selected.daysDelayed} chargeable day
+                  {selected.daysDelayed === 1 ? "" : "s"} × ₱
+                  {selected.penaltyRatePerHeadPerDay}/head/day ×{" "}
+                  {selected.headsSnapshot} head
+                  {selected.headsSnapshot === 1 ? "" : "s"} ={" "}
+                  {formatPHP(selected.penaltyAmount)}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label
+          className={`rl-field sm:col-span-2 ${
+            attentionFor("amount") ? "rl-field-attention" : ""
+          }`}
+        >
+          <span className="rl-field-label">
+            Amount Paid (PHP)
+            {attentionFor("amount") ? <AttentionBadge /> : null}
+          </span>
+          <div className="relative">
+            <span
+              className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 font-mono text-base font-bold text-[var(--ink-muted)]"
+              aria-hidden
+            >
+              ₱
+            </span>
+            <input
+              type="text"
+              inputMode="decimal"
+              {...register("amount")}
+              className="rl-input pl-8 font-mono text-lg font-bold tabular-nums"
+            />
+          </div>
+          {errors.amount ? (
+            <span className="type-caption text-[var(--danger)]" role="alert">
+              {errors.amount.message}
+            </span>
+          ) : null}
+        </label>
+
+        <fieldset
+          className={`rl-field sm:col-span-2 ${
+            attentionFor("channel") ? "rl-field-attention" : ""
+          }`}
+        >
+          <legend className="rl-field-label mb-1.5">
+            Payment Channel
+            {attentionFor("channel") ? <AttentionBadge /> : null}
+          </legend>
+          <div
+            className="grid grid-cols-2 gap-2 sm:grid-cols-3"
+            role="radiogroup"
+            aria-label="Payment channel"
+          >
+            {CHANNELS.map((c) => {
+              const active = paymentChannel === c.value;
+              return (
+                <button
+                  key={c.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  className={`rl-chip ${active ? "rl-chip-selected" : ""}`}
+                  onClick={() => {
+                    setValue("paymentChannel", c.value, {
+                      shouldValidate: true,
+                    });
+                    if (c.value !== "CASH") {
+                      setValue("aiExtractedChannel", c.value);
+                    }
+                  }}
+                >
+                  {c.label}
+                </button>
+              );
+            })}
+          </div>
+        </fieldset>
+
+        <label
+          className={`rl-field ${
+            attentionFor("paidAt") ? "rl-field-attention" : ""
+          }`}
+        >
+          <span className="rl-field-label">
+            Transaction Date
+            {attentionFor("paidAt") ? <AttentionBadge /> : null}
+          </span>
+          <input
+            type="date"
+            max={todayLocalIsoDate()}
+            {...register("paidAt")}
+            className="rl-input font-mono"
+          />
+          {errors.paidAt ? (
+            <span className="type-caption text-[var(--danger)]" role="alert">
+              {errors.paidAt.message}
+            </span>
+          ) : null}
+        </label>
+
+        {paymentChannel === "CASH" ? (
+          <input type="hidden" {...register("referenceNumber")} />
+        ) : (
+          <label
+            className={`rl-field ${
+              attentionFor("reference") ? "rl-field-attention" : ""
+            }`}
+          >
+            <span className="rl-field-label">
+              Reference Number
+              {attentionFor("reference") ? <AttentionBadge /> : null}
+            </span>
+            <input
+              type="text"
+              {...register("referenceNumber")}
+              placeholder="e.g. 901234567890"
+              autoComplete="off"
+              className="rl-input font-mono"
+            />
+            {errors.referenceNumber ? (
+              <span className="type-caption text-[var(--danger)]" role="alert">
+                {errors.referenceNumber.message}
+              </span>
+            ) : null}
+          </label>
+        )}
+      </div>
+
+      {toast ? (
+        <p
+          className={
+            toast.type === "ok" ? "rl-alert rl-alert-ok" : "rl-alert rl-alert-error"
+          }
+          role="status"
+          aria-live="polite"
+        >
+          {toast.message}
+        </p>
+      ) : null}
+
+      {showSubmit ? (
+        <div className="border-t border-[var(--border-subtle)] pt-3">
+          <PayDetailsSubmit
+            canSubmit={canSubmit}
+            pending={pending}
+            isCash={isCash}
+            compressedFile={compressedFile}
+            amount={amount}
+          />
+        </div>
+      ) : null}
+    </>
   );
 }

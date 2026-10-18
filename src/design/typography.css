@@ -78,6 +78,9 @@
   letter-spacing: -0.028em;
   font-variant-numeric: tabular-nums lining-nums;
   color: var(--ink);
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .type-metric-lg {
@@ -87,6 +90,9 @@
   font-weight: 600;
   letter-spacing: -0.032em;
   font-variant-numeric: tabular-nums lining-nums;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .type-data {

@@ -55,7 +55,7 @@ async function loadDashboard(userId: string): Promise<MemberDashboardData> {
 
   const [
     user,
-    equityAgg,
+    contributionsAgg,
     activeLoan,
     recent,
     paymentTargets,
@@ -122,6 +122,34 @@ async function loadDashboard(userId: string): Promise<MemberDashboardData> {
     getMemberKinsenasYearMap(userId),
     prisma.fundCycle.findFirst({ where: { isActive: true } }),
   ]);
+
+  // Interest earnings = member's heads-weighted share of cycle loan interest income.
+  let interestEarnings = new Decimal(0);
+  if (activeCycle) {
+    const [interestAgg, headsAgg] = await Promise.all([
+      prisma.ledgerEntry.aggregate({
+        where: {
+          cycleId: activeCycle.id,
+          entryType: "INTEREST_INCOME_IN",
+        },
+        _sum: { amount: true },
+      }),
+      prisma.user.aggregate({
+        where: { status: "ACTIVE", role: { in: ["MEMBER", "TREASURER", "AUDITOR"] } },
+        _sum: { headsCount: true },
+      }),
+    ]);
+    const poolInterest = new Decimal(
+      interestAgg._sum.amount?.toString() ?? "0",
+    );
+    const totalHeads = headsAgg._sum.headsCount ?? 0;
+    if (poolInterest.gt(0) && totalHeads > 0 && user.headsCount > 0) {
+      interestEarnings = poolInterest
+        .mul(user.headsCount)
+        .div(totalHeads)
+        .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
+    }
+  }
 
   let activeLoanBalance = 0;
   let nextAmortization: MemberDashboardData["nextAmortization"] = null;
@@ -274,7 +302,12 @@ async function loadDashboard(userId: string): Promise<MemberDashboardData> {
     };
   });
 
-  const equity = new Decimal(equityAgg._sum.amount?.toString() ?? "0");
+  const totalContributions = new Decimal(
+    contributionsAgg._sum.amount?.toString() ?? "0",
+  );
+  const yearEndFund = totalContributions
+    .plus(interestEarnings)
+    .toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
   const perHead =
     activeCycle?.contributionAmount?.toString() ??
     nextContribution?.cycle.contributionAmount?.toString();
@@ -289,7 +322,9 @@ async function loadDashboard(userId: string): Promise<MemberDashboardData> {
     prepaidCredit: Number(user.prepaidCredit?.toString() ?? "0"),
     kinsenasDue: Number(kinsenasDue.toFixed(2)),
     monthlyDue: Number(kinsenasDue.mul(2).toFixed(2)),
-    totalEquity: Number(equity.toFixed(2)),
+    totalContributions: Number(totalContributions.toFixed(2)),
+    interestEarnings: Number(interestEarnings.toFixed(2)),
+    yearEndFund: Number(yearEndFund.toFixed(2)),
     activeLoanBalance: Number(new Decimal(activeLoanBalance).toFixed(2)),
     nextKinsenas,
     nextAmortization,

@@ -7,16 +7,18 @@ export default function DashboardLoading() {
         <div className="h-4 w-72 rounded bg-[var(--border)]/45" />
       </div>
       <div className="rl-dash-grid">
-        <div className="rl-fund-stack">
+        <div className="rl-dash-primary rl-fund-stack">
           <div className="h-64 rounded-[var(--radius-lg)] bg-[var(--border)]/60" />
-          <div className="h-52 rounded-[var(--radius-card)] bg-[var(--border)]/45" />
         </div>
-        <div className="rl-fund-stack">
+        <div className="rl-dash-secondary rl-fund-stack">
           <div className="grid grid-cols-2 gap-3">
             <div className="h-24 rounded-[var(--radius-card)] bg-[var(--border)]/50" />
             <div className="h-24 rounded-[var(--radius-card)] bg-[var(--border)]/50" />
           </div>
           <div className="h-56 rounded-[var(--radius-card)] bg-[var(--border)]/45" />
+        </div>
+        <div className="rl-dash-ledger">
+          <div className="h-52 rounded-[var(--radius-card)] bg-[var(--border)]/45" />
         </div>
       </div>
     </div>

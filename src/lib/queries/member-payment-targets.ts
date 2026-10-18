@@ -224,7 +224,7 @@ export async function getMemberPaymentTargets(
         lateFeeBreakdown: c.penaltyAccrualFrozen
           ? "Pass granted — late fee frozen."
           : fee.isCatchUp && fee.chargeableDays === 0
-            ? `Catch-up period · opened ${formatKinsenaDueLabel(c.createdAt)}. Late fees start after ${fee.gracePeriodDays} days from open — not from the original due date.`
+            ? `Catch-up period · opened ${formatKinsenaDueLabel(c.createdAt)}. Within policy grace from due date.`
             : formatLateFeeBreakdown(fee),
         status: statusTag,
         isWithinGrace: fee.isWithinGrace,
@@ -323,7 +323,7 @@ export async function getMemberPaymentTargets(
       lateFeeBreakdown: a.penaltyAccrualFrozen
         ? "Pass granted — late fee frozen."
         : fee.isCatchUp && fee.chargeableDays === 0
-          ? `Catch-up installment · opened ${formatKinsenaDueLabel(a.createdAt)}. Late fees start after ${fee.gracePeriodDays} days from open.`
+          ? `Catch-up installment · opened ${formatKinsenaDueLabel(a.createdAt)}. Within policy grace from due date.`
           : formatLateFeeBreakdown(fee),
       status: statusTag,
       isWithinGrace: fee.isWithinGrace,

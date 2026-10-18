@@ -109,7 +109,7 @@ export function MembersWorkspace({
       <div className="rl-stack">
         {/* Filter & Search Bar */}
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="relative min-w-[240px] flex-1 max-w-md">
+          <div className="relative min-w-0 w-full flex-1 max-w-md sm:min-w-[12rem]">
             <Search
               className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-muted)]"
               aria-hidden

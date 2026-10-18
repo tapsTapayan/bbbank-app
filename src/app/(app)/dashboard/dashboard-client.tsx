@@ -1,15 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import {
-  ChevronRight,
-  AlertTriangle,
-  ArrowRight,
-  CalendarClock,
-} from "lucide-react";
+import { ChevronRight, ArrowRight, CalendarClock } from "lucide-react";
 import { formatPHP } from "@/lib/finance/loan-calculator";
 import {
   formatUtcDate,
+  graceDeadlineCaption,
   type PaymentPillStatus,
 } from "@/lib/finance/status-labels";
 import type { PaymentTargetOption } from "@/lib/queries/member-payment-targets";
@@ -55,7 +51,12 @@ export type MemberDashboardData = {
   prepaidCredit: number;
   kinsenasDue: number;
   monthlyDue: number;
-  totalEquity: number;
+  /** Verified CONTRIBUTION_IN ledger total. */
+  totalContributions: number;
+  /** Member interest share (pro-rata heads × cycle INTEREST_INCOME_IN). */
+  interestEarnings: number;
+  /** contributions + interest earnings (year-end fund position). */
+  yearEndFund: number;
   activeLoanBalance: number;
   nextKinsenas: NextKinsenasObligation | null;
   nextAmortization: {
@@ -73,21 +74,43 @@ export type MemberDashboardData = {
   kinsenasYearMap: MemberKinsenasYearMap | null;
 };
 
-function obligationTone(next: NextKinsenasObligation) {
-  if (next.pendingFreeze) return "pending" as const;
-  if (next.isOverdue || next.penaltyAmount > 0) return "late" as const;
-  if (next.isCatchUp) return "catchup" as const;
-  if (next.isWithinGrace) return "grace" as const;
-  return "due" as const;
-}
+type DuesTone = "pending" | "late" | "catchup" | "grace" | "due" | "clear";
 
-const TONE_LABEL = {
-  pending: "Pending verification",
-  late: "Late fee",
-  catchup: "Catch-up",
-  grace: "Grace period",
-  due: "Due soon",
-} as const;
+/** Aggregate tone from all open obligations — not just the next period. */
+function duesTone(
+  targets: PaymentTargetOption[],
+  next: NextKinsenasObligation | null,
+): { tone: DuesTone; label: string } {
+  if (targets.length === 0 && !next) {
+    return { tone: "clear", label: "Clear" };
+  }
+
+  const overdueCount = targets.filter((t) => t.isOverdue).length;
+  const pending =
+    Boolean(next?.pendingFreeze) ||
+    targets.some((t) => t.penaltyAccrualFrozen);
+  const anyPenalty = targets.some((t) => Number(t.penaltyAmount) > 0);
+  const anyGrace = targets.some((t) => t.isWithinGrace && !t.isOverdue);
+  const anyCatchUp = targets.some((t) => t.isCatchUp);
+
+  if (pending) {
+    return { tone: "pending", label: "Pending verification" };
+  }
+  if (overdueCount > 0 || anyPenalty || next?.isOverdue) {
+    const n = overdueCount || (next?.isOverdue ? 1 : 0);
+    return {
+      tone: "late",
+      label: n > 1 ? `${n} overdue` : "Overdue",
+    };
+  }
+  if (anyCatchUp || next?.isCatchUp) {
+    return { tone: "catchup", label: "Catch-up" };
+  }
+  if (anyGrace || next?.isWithinGrace) {
+    return { tone: "grace", label: "Grace period" };
+  }
+  return { tone: "due", label: "Due soon" };
+}
 
 export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
   const {
@@ -96,7 +119,9 @@ export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
     prepaidCredit,
     kinsenasDue,
     monthlyDue,
-    totalEquity,
+    totalContributions,
+    interestEarnings,
+    yearEndFund,
     activeLoanBalance,
     nextKinsenas,
     nextAmortization,
@@ -106,9 +131,14 @@ export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
   } = data;
 
   const firstName = memberName.split(" ")[0] ?? memberName;
-  const obligationTotal = nextKinsenas
+  const currentDue = nextKinsenas
     ? nextKinsenas.amountDue + nextKinsenas.penaltyAmount
     : 0;
+  const totalOpenDues = paymentTargets.reduce(
+    (sum, t) => sum + (Number(t.suggestedAmount) || 0),
+    0,
+  );
+  const openCount = paymentTargets.length;
   const mapOverdue = kinsenasYearMap?.counts.overdue ?? 0;
   const nextTargetId = nextKinsenas
     ? paymentTargets.find(
@@ -118,92 +148,67 @@ export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
       )?.id
     : undefined;
   const payHref = nextTargetId ? `/pay?target=${nextTargetId}` : "/pay";
-  const tone = nextKinsenas ? obligationTone(nextKinsenas) : null;
+  const { tone, label: toneLabel } = duesTone(paymentTargets, nextKinsenas);
 
   return (
     <FundCanvas>
       <PageHeader
         title={`Welcome, ${firstName}`}
         description={`${headsCount} head${headsCount === 1 ? "" : "s"} · ${formatPHP(kinsenasDue)} / kinsenas · ${formatPHP(monthlyDue)} / month${mapOverdue > 0 ? ` · ${mapOverdue} overdue` : ""}`}
-        actions={
-          <Link href={payHref} className="rl-btn rl-btn-primary">
-            Pay
-            <ArrowRight className="h-4 w-4" aria-hidden />
-          </Link>
-        }
       />
 
       <div className="rl-dash-grid">
-        {/* Left / Primary Column: Sovereign Obligation Hero + 24-Slot Kinsenas Year Matrix */}
-        <div className="rl-fund-stack">
+        {/* Primary: Status Summary — top on mobile; desktop grid places ledger under it. */}
+        <div className="rl-dash-primary rl-fund-stack">
           <section
             aria-labelledby="next-due-heading"
             className="rl-vault-card"
           >
-            {nextKinsenas && tone ? (
+            {nextKinsenas ? (
               <div className="rl-vault-body">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-base font-semibold text-white" id="next-due-heading">
-                      {nextKinsenas.periodLabel} ·{" "}
-                      {nextKinsenas.kinsenaIndex === 1
-                        ? "1st Kinsenas (15th)"
-                        : "2nd Kinsenas (EOM)"}
-                    </p>
-                  </div>
-                  {tone !== "due" ? (
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                  <p
+                    className="min-w-0 text-base font-semibold text-white"
+                    id="next-due-heading"
+                  >
+                    Status Summary
+                  </p>
+                  {tone !== "due" && tone !== "clear" ? (
                     <span
-                      className={`rl-vault-badge rl-vault-badge--${
+                      className={`rl-vault-badge shrink-0 rl-vault-badge--${
                         tone === "late"
                           ? "late"
                           : tone === "grace" || tone === "pending"
                             ? "grace"
-                            : "default"
+                            : tone === "catchup"
+                              ? "catchup"
+                              : "default"
                       }`}
                     >
-                      {TONE_LABEL[tone]}
+                      {toneLabel}
                     </span>
                   ) : null}
                 </div>
 
-                <div>
-                  <p className="type-metric-lg text-white">
-                    {formatPHP(obligationTotal)}
-                  </p>
-                  <p className="mt-1.5 font-mono text-xs text-white/75 tabular-nums">
-                    {nextKinsenas.penaltyAmount > 0
-                      ? `${formatPHP(nextKinsenas.amountDue)} due + ${formatPHP(nextKinsenas.penaltyAmount)} late`
-                      : `${formatPHP(nextKinsenas.amountDue)} (${nextKinsenas.headsSnapshot} × ₱250)`}
-                  </p>
-                </div>
-
-                <dl className="rl-vault-meta-grid">
+                <dl className="rl-vault-meta-grid rl-vault-meta-grid--dues">
                   <div className="rl-vault-meta-item">
-                    <dt>Due Date</dt>
-                    <dd>{formatUtcDate(nextKinsenas.dueDate)}</dd>
-                  </div>
-                  <div className="rl-vault-meta-item">
-                    <dt>
-                      Grace ends
-                    </dt>
-                    <dd>{formatUtcDate(nextKinsenas.graceDeadline)}</dd>
-                  </div>
-                </dl>
-
-                {(nextKinsenas.isOverdue || nextKinsenas.penaltyAmount > 0) && (
-                  <div
-                    className="flex items-start gap-3 rounded-[var(--radius-md)] border border-red-300/30 bg-red-950/45 px-3.5 py-3 text-white"
-                    role="status"
-                  >
-                    <AlertTriangle
-                      className="mt-0.5 h-4 w-4 shrink-0 text-red-300"
-                      aria-hidden
-                    />
-                    <p className="min-w-0 text-xs font-semibold text-red-100">
-                      Late fee: {formatPHP(nextKinsenas.penaltyAmount)}
+                    <dt>Current due</dt>
+                    <dd>{formatPHP(currentDue)}</dd>
+                    <p className="rl-vault-meta-sub">
+                      {nextKinsenas.penaltyAmount > 0
+                        ? `${formatPHP(nextKinsenas.amountDue)} + ${formatPHP(nextKinsenas.penaltyAmount)} late`
+                        : `${nextKinsenas.headsSnapshot} × ₱250`}
                     </p>
                   </div>
-                )}
+                  <div className="rl-vault-meta-item">
+                    <dt>Total open</dt>
+                    <dd>{formatPHP(totalOpenDues)}</dd>
+                    <p className="rl-vault-meta-sub">
+                      {openCount} period{openCount === 1 ? "" : "s"}
+                      {mapOverdue > 0 ? ` · ${mapOverdue} overdue` : ""}
+                    </p>
+                  </div>
+                </dl>
 
                 <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
                   <Link
@@ -229,22 +234,25 @@ export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
               </div>
             )}
           </section>
-
-          {kinsenasYearMap ? (
-            <KinsenasYearMap map={kinsenasYearMap} variant="ledger" />
-          ) : null}
         </div>
 
-        {/* Right / Secondary Column: Portfolio Telemetry, Active Loan Installment, Recent Ledger */}
-        <div className="rl-fund-stack">
+        {/* Year ledger — under Status Summary on mobile; under vault column on desktop. */}
+        {kinsenasYearMap ? (
+          <div className="rl-dash-ledger">
+            <KinsenasYearMap map={kinsenasYearMap} />
+          </div>
+        ) : null}
+
+        {/* Secondary: KPIs, loan installment, recent payments */}
+        <div className="rl-dash-secondary rl-fund-stack">
           <section aria-label="Fund Position">
-            <div
-              className={`rl-kpi-grid${prepaidCredit > 0 ? " rl-kpi-grid--3" : ""}`}
-            >
+            <div className="rl-kpi-grid">
               <div className="rl-kpi-card">
-                <p className="type-label">Equity</p>
+                <p className="type-label">Total Contributions</p>
                 <div>
-                  <p className="rl-kpi-value">{formatPHP(totalEquity)}</p>
+                  <p className="rl-kpi-value">
+                    {formatPHP(totalContributions)}
+                  </p>
                   <p className="type-caption mt-1 tabular-nums">
                     {formatPHP(monthlyDue)} / month
                   </p>
@@ -252,12 +260,29 @@ export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
               </div>
 
               <div className="rl-kpi-card">
-                <p className="type-label">Active Loan</p>
+                <p className="type-label">Year-End Fund</p>
                 <div>
-                  <p className="rl-kpi-value">{formatPHP(activeLoanBalance)}</p>
+                  <p className="rl-kpi-value">{formatPHP(yearEndFund)}</p>
+                  <p className="type-caption mt-1 tabular-nums">
+                    Contributions
+                    {interestEarnings > 0
+                      ? ` + ${formatPHP(interestEarnings)} interest`
+                      : " + interest"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rl-kpi-card rl-kpi-card--span">
+                <div className="flex min-w-0 flex-wrap items-end justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="type-label">Active Loan</p>
+                    <p className="rl-kpi-value mt-2">
+                      {formatPHP(activeLoanBalance)}
+                    </p>
+                  </div>
                   <Link
                     href="/loans"
-                    className="type-caption mt-1 inline-flex items-center gap-0.5 font-semibold text-[var(--brand)] hover:underline"
+                    className="type-caption inline-flex shrink-0 items-center gap-0.5 font-semibold text-[var(--brand)] hover:underline"
                   >
                     {activeLoanBalance > 0 ? "View schedule" : "Check eligibility"}
                     <ChevronRight className="h-3.5 w-3.5" aria-hidden />
@@ -266,7 +291,7 @@ export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
               </div>
 
               {prepaidCredit > 0 ? (
-                <div className="rl-kpi-card col-span-2 sm:col-span-1">
+                <div className="rl-kpi-card rl-kpi-card--span">
                   <p className="type-label">Prepaid Credit</p>
                   <p className="rl-kpi-value text-[var(--success)]">
                     {formatPHP(prepaidCredit)}
@@ -286,21 +311,23 @@ export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
                   <CalendarClock className="h-5 w-5" />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center justify-between gap-2">
                     <p
-                      className="type-label text-[var(--brand)]"
+                      className="type-label min-w-0 truncate text-[var(--brand)]"
                       id="loan-installment-heading"
                     >
                       {nextAmortization.loanLabel} · Installment #
                       {nextAmortization.installmentNumber}
                     </p>
-                    <span className="font-mono text-sm font-bold tabular-nums text-[var(--ink)]">
+                    <span className="shrink-0 font-mono text-sm font-bold tabular-nums text-[var(--ink)]">
                       <Money amount={nextAmortization.amountDue} />
                     </span>
                   </div>
                   <p className="type-caption mt-1">
-                    Due {formatUtcDate(nextAmortization.dueDate)} · Grace ends{" "}
-                    {formatUtcDate(nextAmortization.graceDeadline)}
+                    Due {formatUtcDate(nextAmortization.dueDate)} ·{" "}
+                    {graceDeadlineCaption(nextAmortization.graceDeadline, {
+                      isOverdue: nextAmortization.penaltyAmount > 0,
+                    })}
                     {nextAmortization.penaltyAmount > 0
                       ? ` · Late ${formatPHP(nextAmortization.penaltyAmount)}`
                       : ""}

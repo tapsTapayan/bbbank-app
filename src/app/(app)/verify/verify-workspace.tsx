@@ -176,7 +176,7 @@ export function VerifyWorkspace({
     >
       {/* Mobile Segmented Switcher (<768px) */}
       <div
-        className="rl-ops-tabs md:hidden"
+        className="rl-ops-tabs lg:hidden"
         role="tablist"
         aria-label="Verification panes"
       >
@@ -202,13 +202,13 @@ export function VerifyWorkspace({
 
       <SplitView
         variant="triple"
-        className="min-h-0 flex-1 overflow-auto md:overflow-hidden"
+        className="min-h-0 min-w-0 flex-1 overflow-auto lg:overflow-hidden"
       >
         {/* Pane 1: Pending Queue */}
         <aside
           className={clsx(
             "rl-ops-pane",
-            mobilePane === "queue" ? "flex" : "hidden md:flex",
+            mobilePane === "queue" ? "flex" : "hidden lg:flex",
           )}
         >
           <div className="rl-ops-toolbar">
@@ -270,7 +270,7 @@ export function VerifyWorkspace({
         <section
           className={clsx(
             "rl-ops-pane min-h-[320px] bg-[var(--surface)]",
-            mobilePane === "receipt" ? "flex" : "hidden md:flex",
+            mobilePane === "receipt" ? "flex" : "hidden lg:flex",
           )}
         >
           {selected && receiptUrl ? (
@@ -311,7 +311,7 @@ export function VerifyWorkspace({
         <aside
           className={clsx(
             "rl-ops-pane",
-            mobilePane === "decide" ? "flex" : "hidden md:flex",
+            mobilePane === "decide" ? "flex" : "hidden lg:flex",
           )}
         >
           <div className="rl-ops-toolbar">
@@ -509,7 +509,7 @@ function CpePenaltyBadge({ item }: { item: VerifyQueueItem }) {
         </div>
         <div className="flex justify-between gap-2">
           <dt className="opacity-80">
-            Grace ends
+            {item.isWithinGrace ? "Grace ends" : "Grace lapsed"}
           </dt>
           <dd className="font-mono font-medium text-[var(--ink)]">
             {formatDate(item.graceDeadline)}
@@ -531,7 +531,7 @@ function CpePenaltyBadge({ item }: { item: VerifyQueueItem }) {
         </p>
       ) : item.penaltyFrozenAtSubmit ? (
         <p className="mt-2 text-[11px] font-medium opacity-85">
-          Frozen at submit · reject resumes accrual
+          Frozen at payment date · reject resumes accrual
         </p>
       ) : null}
     </div>

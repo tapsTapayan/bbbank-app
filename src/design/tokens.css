@@ -134,8 +134,8 @@
   --content-max: 74rem;
   --content-wide: 84rem;
   --page-gap: var(--space-8);
-  --page-pad-x: 1.25rem;
-  --page-pad-y: 1.5rem;
+  --page-pad-x: 1rem;
+  --page-pad-y: 1.25rem;
 
   /*
    * Radii — restrained & shared:

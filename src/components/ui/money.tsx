@@ -18,7 +18,7 @@ export function Money({ amount, className, metric = false }: MoneyProps) {
   return (
     <span
       className={clsx(
-        "type-data tabular-nums",
+        "type-data tabular-nums min-w-0 max-w-full",
         metric ? "type-metric" : "type-body font-semibold tracking-tight",
         className,
       )}

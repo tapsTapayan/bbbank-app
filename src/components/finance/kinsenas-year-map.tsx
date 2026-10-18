@@ -1,9 +1,7 @@
 "use client";
 
-import Link from "next/link";
-import { useId, useMemo } from "react";
+import { useId } from "react";
 import { clsx } from "clsx";
-import { formatPHP } from "@/lib/finance/loan-calculator";
 import type {
   KinsenaMapCell,
   KinsenaMapTone,
@@ -44,39 +42,9 @@ const LEGEND: KinsenaMapTone[] = [
   "upcoming",
 ];
 
-const TONE_PRIORITY: Record<KinsenaMapTone, number> = {
-  overdue: 0,
-  due: 1,
-  partial: 2,
-  pending: 3,
-  upcoming: 4,
-  paid: 5,
-  empty: 6,
-};
-
-export type OpenPeriodMeta = {
-  amount: number;
-  penalty: number;
-};
-
 type KinsenasYearMapProps = {
   map: MemberKinsenasYearMap;
-  variant?: "ledger" | "open";
-  onSelectPeriod?: (contributionId: string) => void;
-  selectedPeriodId?: string;
-  /** Pay desk: remaining totals keyed by contribution id. */
-  periodMeta?: Record<string, OpenPeriodMeta>;
 };
-
-function isActionable(tone: KinsenaMapTone) {
-  return (
-    tone === "due" ||
-    tone === "overdue" ||
-    tone === "partial" ||
-    tone === "pending" ||
-    tone === "upcoming"
-  );
-}
 
 function dayOrdinal(day: number) {
   const j = day % 10;
@@ -97,27 +65,9 @@ function halfLabel(cell: KinsenaMapCell) {
 
 function MatrixCell({ cell }: { cell: KinsenaMapCell }) {
   const title = `${MONTHS[cell.monthIndex]} ${halfLabel(cell)} · ${TONE_LABEL[cell.tone]}`;
-  const payHref = cell.id ? `/pay?target=${cell.id}` : "/pay";
-  const markClass = clsx("km-mark", `km-mark--${cell.tone}`);
-
-  if (cell.tone === "empty") {
-    return <span className={markClass} title={title} aria-label={title} />;
-  }
-
-  if (isActionable(cell.tone)) {
-    return (
-      <Link
-        href={payHref}
-        className={markClass}
-        title={title}
-        aria-label={title}
-      />
-    );
-  }
-
   return (
     <span
-      className={markClass}
+      className={clsx("km-mark", `km-mark--${cell.tone}`)}
       title={title}
       aria-label={title}
       role="img"
@@ -125,132 +75,8 @@ function MatrixCell({ cell }: { cell: KinsenaMapCell }) {
   );
 }
 
-function OpenPeriodList({
-  cells,
-  onSelectPeriod,
-  selectedPeriodId,
-  periodMeta,
-}: {
-  cells: KinsenaMapCell[];
-  onSelectPeriod?: (contributionId: string) => void;
-  selectedPeriodId?: string;
-  periodMeta?: Record<string, OpenPeriodMeta>;
-}) {
-  const groups = useMemo(() => {
-    const open = cells
-      .filter((c) => isActionable(c.tone) && c.id)
-      .sort((a, b) => {
-        const p = TONE_PRIORITY[a.tone] - TONE_PRIORITY[b.tone];
-        if (p !== 0) return p;
-        if (a.monthIndex !== b.monthIndex) return a.monthIndex - b.monthIndex;
-        return a.kinsenaIndex - b.kinsenaIndex;
-      });
-
-    const byMonth: { monthIndex: number; items: KinsenaMapCell[] }[] = [];
-    for (const cell of open) {
-      const last = byMonth[byMonth.length - 1];
-      if (last && last.monthIndex === cell.monthIndex) {
-        last.items.push(cell);
-      } else {
-        byMonth.push({ monthIndex: cell.monthIndex, items: [cell] });
-      }
-    }
-    return byMonth;
-  }, [cells]);
-
-  if (groups.length === 0) {
-    return (
-      <p className="type-body-sm type-muted px-1 py-3">All caught up for now.</p>
-    );
-  }
-
-  return (
-    <ul className="km-period-list">
-      {groups.map((group) => (
-        <li key={group.monthIndex} className="km-period-group">
-          <p className="km-period-month">{MONTHS[group.monthIndex]}</p>
-          <ul className="km-period-group-rows">
-            {group.items.map((cell) => {
-              const selected = Boolean(
-                selectedPeriodId && cell.id === selectedPeriodId,
-              );
-              const meta = cell.id ? periodMeta?.[cell.id] : undefined;
-              const label = `${MONTHS[cell.monthIndex]} ${halfLabel(cell)}`;
-
-              const row = (
-                <>
-                  <span
-                    className={clsx(
-                      "km-period-rail",
-                      `km-period-rail--${cell.tone}`,
-                    )}
-                    aria-hidden
-                  />
-                  <span className="km-period-main">
-                    <span className="km-period-date">{label}</span>
-                    <span
-                      className={clsx(
-                        "km-period-status",
-                        `km-period-status--${cell.tone}`,
-                      )}
-                    >
-                      {TONE_LABEL[cell.tone]}
-                      {meta && meta.penalty > 0
-                        ? ` · ${formatPHP(meta.penalty)} late`
-                        : ""}
-                    </span>
-                  </span>
-                  {meta ? (
-                    <span className="km-period-amount">
-                      {formatPHP(meta.amount)}
-                    </span>
-                  ) : null}
-                </>
-              );
-
-              return (
-                <li key={`${cell.monthIndex}-${cell.kinsenaIndex}`}>
-                  {onSelectPeriod && cell.id ? (
-                    <button
-                      type="button"
-                      className={clsx(
-                        "km-period-row",
-                        `km-period-row--${cell.tone}`,
-                        selected && "is-selected",
-                      )}
-                      aria-pressed={selected}
-                      onClick={() => onSelectPeriod(cell.id!)}
-                    >
-                      {row}
-                    </button>
-                  ) : (
-                    <Link
-                      href={cell.id ? `/pay?target=${cell.id}` : "/pay"}
-                      className={clsx(
-                        "km-period-row",
-                        `km-period-row--${cell.tone}`,
-                      )}
-                    >
-                      {row}
-                    </Link>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-export function KinsenasYearMap({
-  map,
-  variant = "ledger",
-  onSelectPeriod,
-  selectedPeriodId,
-  periodMeta,
-}: KinsenasYearMapProps) {
+/** Dashboard year ledger — read-only status overview of the 24 kinsenas slots. */
+export function KinsenasYearMap({ map }: KinsenasYearMapProps) {
   const headingId = useId();
   const paid = map.counts.paid;
   const openCount =
@@ -260,27 +86,6 @@ export function KinsenasYearMap({
     map.counts.pending;
   const tracked = map.cells.filter((c) => c.tone !== "empty").length;
   const progress = tracked > 0 ? Math.round((paid / tracked) * 100) : 0;
-
-  if (variant === "open") {
-    return (
-      <section className="km-open" aria-labelledby={headingId}>
-        <div className="km-open-head">
-          <p className="type-label" id={headingId}>
-            Periods
-          </p>
-          <p className="type-caption tabular-nums shrink-0">
-            {openCount > 0 ? `${openCount} left` : "Clear"}
-          </p>
-        </div>
-        <OpenPeriodList
-          cells={map.cells}
-          onSelectPeriod={onSelectPeriod}
-          selectedPeriodId={selectedPeriodId}
-          periodMeta={periodMeta}
-        />
-      </section>
-    );
-  }
 
   const row15 = MONTHS.map((_, monthIndex) =>
     map.cells.find(
@@ -348,7 +153,7 @@ export function KinsenasYearMap({
           <tbody>
             <tr>
               <th scope="row" className="km-matrix-rowhead">
-                15th
+                15
               </th>
               {row15.map((cell) => (
                 <td key={`1-${cell.monthIndex}`}>

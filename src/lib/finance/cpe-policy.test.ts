@@ -11,6 +11,7 @@ import {
   formatKinsenaDueLabel,
   generate2MonthLoanSchedule,
   isBlockingOverdueContribution,
+  startOfLocalDay,
 } from "./cpe-policy";
 import {
   allocateContributionPayment,
@@ -42,25 +43,13 @@ describe("calculateKinsenaLateFee (Rule #3)", () => {
   });
 });
 
-describe("effectiveDueDateForPenalty (catch-up open)", () => {
-  it("keeps the policy due when opened before grace ends", () => {
-    const due = new Date(Date.UTC(2026, 9, 15));
-    const opened = new Date(Date.UTC(2026, 9, 16));
-    expect(effectiveDueDateForPenalty(due, opened).getTime()).toBe(
-      new Date(2026, 9, 15).setHours(0, 0, 0, 0),
-    );
-  });
-
-  it("anchors to open day when catch-up opens after grace", () => {
+describe("effectiveDueDateForPenalty", () => {
+  it("always uses the policy due date (Rule #3)", () => {
     const due = new Date(Date.UTC(2026, 0, 15));
     const opened = new Date(Date.UTC(2026, 9, 18));
-    const anchor = effectiveDueDateForPenalty(due, opened);
-    expect(anchor.getFullYear()).toBe(2026);
-    expect(anchor.getMonth()).toBe(9);
-    expect(anchor.getDate()).toBe(18);
-    const fee = calculateKinsenaLateFee(anchor, opened, 7);
-    expect(fee.chargeableDays).toBe(0);
-    expect(fee.penaltyAmount.toFixed(2)).toBe("0.00");
+    expect(effectiveDueDateForPenalty(due, opened).getTime()).toBe(
+      startOfLocalDay(due).getTime(),
+    );
   });
 });
 
@@ -184,19 +173,31 @@ describe("effectiveAsOfForPenaltyAccrual (freeze / reject resume)", () => {
 });
 
 describe("computeLiveLateFee", () => {
-  it("anchors catch-up opens and freezes at submit", () => {
+  it("accrues Rule #3 from policy due even for catch-up opens", () => {
+    // Due Jan 15, opened Oct 18, asOf Oct 20 → past policy grace by months.
+    const fee = computeLiveLateFee({
+      dueDate: new Date(Date.UTC(2026, 0, 15)),
+      openedAt: new Date(Date.UTC(2026, 9, 18)),
+      headsCount: 4,
+      now: new Date(2026, 9, 20),
+    });
+    expect(fee.isCatchUp).toBe(true);
+    expect(fee.isWithinGrace).toBe(false);
+    expect(fee.chargeableDays).toBeGreaterThan(0);
+    expect(Number(fee.penaltyAmount.toFixed(2))).toBeGreaterThan(0);
+  });
+
+  it("still freezes accrual at pending submit", () => {
     const fee = computeLiveLateFee({
       dueDate: new Date(Date.UTC(2026, 0, 15)),
       openedAt: new Date(Date.UTC(2026, 9, 18)),
       headsCount: 4,
       now: new Date(2026, 9, 25),
-      pendingSubmittedAt: new Date(2026, 9, 20),
+      // Submitted during policy grace — freeze keeps chargeable days at 0.
+      pendingSubmittedAt: new Date(2026, 0, 16),
     });
     expect(fee.chargeableDays).toBe(0);
     expect(fee.penaltyAmount.toFixed(2)).toBe("0.00");
-    expect(fee.isCatchUp).toBe(true);
-    // Must not look like CPE "in grace" against the historical grace window.
-    expect(fee.isWithinGrace).toBe(false);
   });
 
   it("keeps In-grace semantics for on-time opens within policy grace", () => {

@@ -67,6 +67,30 @@ export function formatUtcDate(iso: string): string {
   });
 }
 
+/**
+ * "Grace ends" while still within / before grace; "Grace lapsed" once past.
+ */
+export function graceDeadlineCaption(
+  graceDeadlineIso: string,
+  opts?: {
+    isWithinGrace?: boolean;
+    isAdvance?: boolean;
+    isOverdue?: boolean;
+  },
+): string {
+  const date = formatUtcDate(graceDeadlineIso);
+  if (opts?.isAdvance || opts?.isWithinGrace) {
+    return `Grace ends ${date}`;
+  }
+  if (opts?.isOverdue || opts?.isWithinGrace === false) {
+    return `Grace lapsed ${date}`;
+  }
+  const graceMs = Date.parse(graceDeadlineIso);
+  const past =
+    Number.isFinite(graceMs) && graceMs < Date.now();
+  return past ? `Grace lapsed ${date}` : `Grace ends ${date}`;
+}
+
 export function formatUtcDateShort(iso: string): string {
   return new Date(iso).toLocaleDateString("en-PH", {
     month: "short",

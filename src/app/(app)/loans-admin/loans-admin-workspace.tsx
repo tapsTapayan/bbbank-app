@@ -96,7 +96,7 @@ export function LoansAdminWorkspace({ loans }: { loans: LoanDeskRow[] }) {
       ) : (
         <>
           <div
-            className="rl-ops-tabs md:hidden"
+            className="rl-ops-tabs lg:hidden"
             role="tablist"
             aria-label="Loan desk panes"
           >
@@ -120,10 +120,10 @@ export function LoansAdminWorkspace({ loans }: { loans: LoanDeskRow[] }) {
             </button>
           </div>
 
-          <SplitView variant="dual" className="min-h-0 flex-1">
+          <SplitView variant="dual" className="min-h-0 min-w-0 flex-1">
             <SplitPane
               className={clsx(
-                mobilePane === "queue" ? "flex" : "hidden md:flex",
+                mobilePane === "queue" ? "flex" : "hidden lg:flex",
               )}
             >
               <div className="rl-ops-toolbar">
@@ -182,7 +182,7 @@ export function LoansAdminWorkspace({ loans }: { loans: LoanDeskRow[] }) {
 
             <SplitPane
               className={clsx(
-                mobilePane === "detail" ? "flex" : "hidden md:flex",
+                mobilePane === "detail" ? "flex" : "hidden lg:flex",
               )}
             >
               <div className="rl-ops-toolbar">

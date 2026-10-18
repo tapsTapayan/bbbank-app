@@ -69,8 +69,8 @@ function contributionLabel(periodMonth: Date, kinsenaIndex: number): string {
 
 /**
  * Loads PENDING_VERIFICATION submissions for the treasurer queue.
- * Attaches CPE grace / late-fee verification frozen at submittedAt,
- * with catch-up due anchoring.
+ * Late fees are as of the payment transaction date (paidAt), falling
+ * back to submittedAt when paidAt is missing — Rule #3 freeze clock.
  */
 export async function getPendingVerificationQueue(): Promise<VerifyQueueItem[]> {
   const rows = await prisma.paymentSubmission.findMany({
@@ -189,14 +189,16 @@ export async function getPendingVerificationQueue(): Promise<VerifyQueueItem[]> 
         penaltyAmount = Math.max(0, storedPenalty - waived);
         lateFeeBreakdown = "Pass granted — late fee waived / frozen.";
       } else {
+        // Accrue / freeze as of transaction date, not wall-clock submit.
+        const asOf = row.paidAt ?? row.createdAt;
         const fee = computeLiveLateFee({
           dueDate,
           openedAt,
           headsCount: headsSnapshot,
-          now: row.createdAt,
+          now: asOf,
           gracePeriodDays,
           ratePerHeadPerDay,
-          pendingSubmittedAt: row.createdAt,
+          pendingSubmittedAt: asOf,
         });
         daysDelayed = fee.chargeableDays;
         penaltyAmount = Number(
@@ -205,7 +207,7 @@ export async function getPendingVerificationQueue(): Promise<VerifyQueueItem[]> 
         isCatchUp = fee.isCatchUp;
         lateFeeBreakdown =
           fee.isCatchUp && fee.chargeableDays === 0
-            ? "Catch-up open — late fees freeze from submit; accrual is from open day, not the original due date."
+            ? "Catch-up open — late fees use the payment date; accrual follows Rule #3 from the due date."
             : formatLateFeeBreakdown(fee);
         isWithinGrace = fee.isWithinGrace;
         isOverdue = fee.isOverdue;

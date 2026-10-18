@@ -31,7 +31,7 @@ export function OpsStage({
           </div>
         </div>
         {actions ? (
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <div className="flex min-w-0 max-w-full flex-wrap items-center gap-2">
             {actions}
           </div>
         ) : null}
@@ -39,7 +39,7 @@ export function OpsStage({
       {padded ? (
         <div className={clsx("rl-ops-body", bodyClassName)}>{children}</div>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {children}
         </div>
       )}

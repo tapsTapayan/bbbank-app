@@ -15,7 +15,7 @@ import {
  *
  * Freeze: PENDING_VERIFICATION freezes at submission createdAt.
  * After REJECTED, accrual resumes excluding the pending window (not full due→now).
- * Catch-up opens use effectiveDueDateForPenalty (via computeLiveLateFee).
+ * Accrual always follows Rule #3 from the policy due date (via computeLiveLateFee).
  *
  * Secure with Authorization: Bearer ${CRON_SECRET} (Vercel cron).
  */
