@@ -328,6 +328,10 @@ export async function updateAppUser(input: {
   role: UserRole;
   status: UserStatus;
   headsCount: number;
+  /** Login email for fund members. Ignored for username-only admins. */
+  email?: string;
+  /** Login username for admin accounts. Ignored for fund members. */
+  username?: string;
 }): Promise<UpdateAppUserResult> {
   try {
     await requireAppUser(["ADMIN"]);
@@ -385,6 +389,51 @@ export async function updateAppUser(input: {
       ? 1
       : Math.max(1, Math.min(50, Math.floor(input.headsCount)));
 
+    let nextEmail = user.email;
+    let nextUsername = user.username;
+    let authEmail: string | null = null;
+
+    if (isAdminAccount) {
+      if (input.username !== undefined) {
+        const username = normalizeUsername(input.username);
+        if (!isValidUsername(username)) {
+          return {
+            ok: false,
+            error:
+              "Username must be 3–32 chars, start with a letter, and use only a-z, 0-9, ., _, -.",
+          };
+        }
+        if (username !== user.username) {
+          const taken = await prisma.user.findUnique({ where: { username } });
+          if (taken) {
+            return { ok: false, error: "That username is already taken." };
+          }
+          nextUsername = username;
+          authEmail = usernameToStaffEmail(username);
+        }
+      }
+    } else if (input.email !== undefined) {
+      const email = input.email.trim().toLowerCase();
+      if (!email.includes("@") || email.length < 5) {
+        return { ok: false, error: "Enter a valid email address." };
+      }
+      if (email !== user.email) {
+        const taken = await prisma.user.findFirst({
+          where: { email, NOT: { id: user.id } },
+          select: { id: true },
+        });
+        if (taken) {
+          return { ok: false, error: "That email is already registered." };
+        }
+        nextEmail = email;
+        authEmail = email;
+      }
+    }
+
+    const nameChanged = name !== user.name;
+    const roleChanged = user.role !== nextRole;
+    const loginChanged = authEmail !== null;
+
     await prisma.user.update({
       where: { id: user.id },
       data: {
@@ -392,18 +441,34 @@ export async function updateAppUser(input: {
         role: nextRole,
         status: input.status,
         headsCount,
+        ...(isAdminAccount
+          ? { username: nextUsername }
+          : { email: nextEmail }),
       },
     });
 
-    if (user.role !== nextRole) {
+    if (nameChanged || roleChanged || loginChanged) {
       const admin = createAdminClient();
       const { error } = await admin.auth.admin.updateUserById(user.id, {
-        app_metadata: { role: nextRole },
+        ...(loginChanged
+          ? { email: authEmail!, email_confirm: true }
+          : {}),
+        ...(roleChanged ? { app_metadata: { role: nextRole } } : {}),
+        ...(nameChanged || (isAdminAccount && loginChanged)
+          ? {
+              user_metadata: {
+                name,
+                ...(isAdminAccount && nextUsername
+                  ? { username: nextUsername }
+                  : {}),
+              },
+            }
+          : {}),
       });
       if (error) {
         return {
           ok: false,
-          error: `Profile saved but JWT role sync failed: ${error.message}`,
+          error: `Profile saved but auth sync failed: ${error.message}`,
         };
       }
     }
@@ -413,6 +478,103 @@ export async function updateAppUser(input: {
     return {
       ok: false,
       error: formatActionError(err, "Could not update user."),
+    };
+  }
+}
+
+export type DeleteAppUserResult = ActionResult;
+
+/**
+ * Permanently deletes an account from Prisma + Supabase Auth.
+ * Blocked for admin accounts, the signed-in admin, and users with fund history
+ * (contributions, loans, payments, ledger).
+ */
+export async function deleteAppUser(input: {
+  userId: string;
+}): Promise<DeleteAppUserResult> {
+  try {
+    const actor = await requireAppUser(["ADMIN"]);
+
+    if (actor.id === input.userId) {
+      return { ok: false, error: "You cannot delete your own account." };
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: input.userId } });
+    if (!user) return { ok: false, error: "User not found." };
+
+    if (user.role === "ADMIN" || Boolean(user.username)) {
+      return {
+        ok: false,
+        error: "Admin accounts cannot be deleted. Set status to INACTIVE instead.",
+      };
+    }
+
+    const [
+      contributions,
+      loans,
+      payments,
+      ledgerEntries,
+      waiversIssued,
+    ] = await Promise.all([
+      prisma.contribution.count({ where: { userId: user.id } }),
+      prisma.loan.count({ where: { borrowerId: user.id } }),
+      prisma.paymentSubmission.count({ where: { userId: user.id } }),
+      prisma.ledgerEntry.count({
+        where: {
+          OR: [{ userId: user.id }, { createdById: user.id }],
+        },
+      }),
+      prisma.penaltyWaiver.count({ where: { issuedById: user.id } }),
+    ]);
+
+    const blockers: string[] = [];
+    if (contributions > 0) {
+      blockers.push(
+        `${contributions} contribution${contributions === 1 ? "" : "s"}`,
+      );
+    }
+    if (loans > 0) {
+      blockers.push(`${loans} loan${loans === 1 ? "" : "s"}`);
+    }
+    if (payments > 0) {
+      blockers.push(
+        `${payments} payment submission${payments === 1 ? "" : "s"}`,
+      );
+    }
+    if (ledgerEntries > 0) {
+      blockers.push(
+        `${ledgerEntries} ledger entr${ledgerEntries === 1 ? "y" : "ies"}`,
+      );
+    }
+    if (waiversIssued > 0) {
+      blockers.push(
+        `${waiversIssued} penalty waiver${waiversIssued === 1 ? "" : "s"}`,
+      );
+    }
+
+    if (blockers.length > 0) {
+      return {
+        ok: false,
+        error: `Cannot delete — account has fund history (${blockers.join(", ")}). Set status to INACTIVE instead.`,
+      };
+    }
+
+    await prisma.user.delete({ where: { id: user.id } });
+
+    const admin = createAdminClient();
+    const { error } = await admin.auth.admin.deleteUser(user.id);
+    if (error) {
+      return {
+        ok: false,
+        error: `Account removed from the app, but auth cleanup failed: ${error.message}`,
+      };
+    }
+
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      error: formatActionError(err, "Could not delete account."),
     };
   }
 }

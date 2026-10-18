@@ -7,11 +7,13 @@ import {
   Pencil,
   Search,
   ShieldPlus,
+  Trash2,
   UserPlus,
   X,
 } from "lucide-react";
 import {
   createAppUser,
+  deleteAppUser,
   resetAppUserPassword,
   updateAppUser,
 } from "@/actions/users";
@@ -32,6 +34,8 @@ export type MemberRow = {
 };
 
 type CreateModalKind = "member" | "admin" | null;
+
+const DELETE_CONFIRM_PHRASE = "Delete account";
 
 const ROLE_FILTERS = [
   "ALL",
@@ -516,22 +520,32 @@ function EditMemberModal({
   onSaved: (message: string) => void;
 }) {
   const [name, setName] = useState(member.name);
+  const [email, setEmail] = useState(member.email ?? "");
+  const [username, setUsername] = useState(member.username ?? "");
   const [headsCount, setHeadsCount] = useState(member.headsCount);
   const [role, setRole] = useState(member.role);
   const [status, setStatus] = useState(member.status);
   const [newPassword, setNewPassword] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deletePhrase, setDeletePhrase] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const isAdminAccount = member.role === "ADMIN" || Boolean(member.username);
+  const deletePhraseMatches = deletePhrase === DELETE_CONFIRM_PHRASE;
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        if (confirmDelete) {
+          setConfirmDelete(false);
+          setDeletePhrase("");
+        } else onClose();
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+  }, [onClose, confirmDelete]);
 
   function save(e: React.FormEvent) {
     e.preventDefault();
@@ -543,6 +557,7 @@ function EditMemberModal({
         headsCount,
         role,
         status,
+        ...(isAdminAccount ? { username } : { email }),
       });
       if (!result.ok) {
         setError(result.error);
@@ -562,6 +577,24 @@ function EditMemberModal({
       }
 
       onSaved("Account updated.");
+    });
+  }
+
+  function removeAccount() {
+    if (!deletePhraseMatches) {
+      setError(`Type "${DELETE_CONFIRM_PHRASE}" exactly to confirm.`);
+      return;
+    }
+    setError(null);
+    startTransition(async () => {
+      const result = await deleteAppUser({ userId: member.id });
+      if (!result.ok) {
+        setError(result.error);
+        setConfirmDelete(false);
+        setDeletePhrase("");
+        return;
+      }
+      onSaved(`Deleted ${member.name}.`);
     });
   }
 
@@ -601,6 +634,38 @@ function EditMemberModal({
               className="rl-input"
             />
           </label>
+
+          {isAdminAccount ? (
+            <label className="rl-field">
+              <span className="rl-field-label">Username</span>
+              <input
+                required
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="rl-input font-mono"
+                placeholder="admin2"
+              />
+              <span className="rl-field-hint">
+                Login id changes immediately after save.
+              </span>
+            </label>
+          ) : (
+            <label className="rl-field">
+              <span className="rl-field-label">Email Address</span>
+              <input
+                required
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="rl-input"
+                placeholder="member@cpe.edu.ph"
+              />
+              <span className="rl-field-hint">
+                Login email changes immediately after save.
+              </span>
+            </label>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <label className="rl-field">
@@ -674,23 +739,108 @@ function EditMemberModal({
             </p>
           ) : null}
 
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="rl-btn rl-btn-secondary"
+          {confirmDelete && !isAdminAccount ? (
+            <div className="rounded-[var(--radius-card)] border border-[var(--danger)]/40 bg-[var(--danger)]/5 p-3 rl-stack !gap-3">
+              <div className="rl-stack !gap-1">
+                <p className="type-body-sm font-semibold text-[var(--danger)]">
+                  Critical action — permanent deletion
+                </p>
+                <p className="type-body-sm text-[var(--ink)]">
+                  You are about to permanently delete{" "}
+                  <strong>{member.name}</strong> ({displayLoginId(member)}).
+                  This removes the account from the app and auth. It cannot be
+                  undone. Accounts with fund history cannot be deleted — set
+                  them inactive instead.
+                </p>
+              </div>
+              <label className="rl-field">
+                <span className="rl-field-label">
+                  Type <span className="font-mono">{DELETE_CONFIRM_PHRASE}</span>{" "}
+                  to confirm
+                </span>
+                <input
+                  type="text"
+                  value={deletePhrase}
+                  onChange={(e) => setDeletePhrase(e.target.value)}
+                  autoComplete="off"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  disabled={pending}
+                  placeholder={DELETE_CONFIRM_PHRASE}
+                  className="rl-input font-mono"
+                  aria-required
+                />
+              </label>
+              <div className="flex flex-wrap justify-end gap-2">
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => {
+                    setConfirmDelete(false);
+                    setDeletePhrase("");
+                    setError(null);
+                  }}
+                  className="rl-btn rl-btn-secondary"
+                >
+                  Keep account
+                </button>
+                <button
+                  type="button"
+                  disabled={pending || !deletePhraseMatches}
+                  onClick={removeAccount}
+                  className="rl-btn rl-btn-danger"
+                >
+                  {pending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" aria-hidden />
+                  )}
+                  Delete permanently
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div
+              className={`flex flex-wrap items-center gap-2 pt-2 ${
+                isAdminAccount ? "justify-end" : "justify-between"
+              }`}
             >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={pending}
-              className="rl-btn rl-btn-primary"
-            >
-              {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Save Changes
-            </button>
-          </div>
+              {!isAdminAccount ? (
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={() => {
+                    setError(null);
+                    setDeletePhrase("");
+                    setConfirmDelete(true);
+                  }}
+                  className="rl-btn rl-btn-danger-outline"
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden />
+                  Delete
+                </button>
+              ) : null}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rl-btn rl-btn-secondary"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={pending}
+                  className="rl-btn rl-btn-primary"
+                >
+                  {pending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : null}
+                  Save Changes
+                </button>
+              </div>
+            </div>
+          )}
         </form>
       </div>
     </div>
