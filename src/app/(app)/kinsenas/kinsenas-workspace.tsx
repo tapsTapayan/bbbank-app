@@ -66,18 +66,15 @@ export function KinsenasWorkspace({
 
       {!cycleName ? (
         <p className="ui-alert ui-alert-warn mb-4">
-          No active fund cycle. An admin must start the year cycle on Cycle
-          settings before obligations can be opened.
+          No active cycle — start one on Cycle settings.
         </p>
       ) : null}
 
-      <div className="ui-desk">
+      <div className="ui-desk ui-desk-col">
         <section className="ui-desk-section">
           <h2 className="type-title">Open payable window</h2>
           <p className="type-caption">
-            Opens every kinsenas from the cycle start through the next period —
-            earlier dates for catch-up, this month for half/full-month pay, and
-            the next period for advances.
+            Cycle start through next period (catch-up, current, advance).
           </p>
           <button
             type="button"
@@ -97,13 +94,9 @@ export function KinsenasWorkspace({
                 className="h-4 w-4 text-[var(--brand)]"
                 aria-hidden
               />
-              <h2 className="type-title">Current period</h2>
+              <h2 className="type-title">Current</h2>
             </div>
             <p className="type-body-sm font-medium">{previewCurrent.label}</p>
-            <p className="type-caption">
-              Creates ₱250 × heads obligations for all active members
-              (idempotent).
-            </p>
             <button
               type="button"
               disabled={pending || !cycleName}
@@ -111,7 +104,7 @@ export function KinsenasWorkspace({
               onClick={() => run(() => openCurrentKinsenaAction())}
             >
               {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Open current kinsena
+              Open current
             </button>
           </section>
 
@@ -121,13 +114,9 @@ export function KinsenasWorkspace({
                 className="h-4 w-4 text-[var(--brand)]"
                 aria-hidden
               />
-              <h2 className="type-title">Next period (advance)</h2>
+              <h2 className="type-title">Next (advance)</h2>
             </div>
             <p className="type-body-sm font-medium">{previewNext.label}</p>
-            <p className="type-caption">
-              Open early so members can submit advance payments before the due
-              date.
-            </p>
             <div className="mt-auto flex flex-wrap gap-2">
               <button
                 type="button"
@@ -136,7 +125,7 @@ export function KinsenasWorkspace({
                 onClick={() => run(() => openNextKinsenaAction())}
               >
                 {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                Open next kinsena
+                Open next
               </button>
               <button
                 type="button"
@@ -152,7 +141,7 @@ export function KinsenasWorkspace({
                   )
                 }
               >
-                Confirm open {previewNext.label}
+                Open {previewNext.label}
               </button>
             </div>
           </section>

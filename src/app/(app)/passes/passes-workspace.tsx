@@ -96,7 +96,7 @@ export function PassesWorkspace({
   return (
     <OpsWorkstation
       title="Penalty passes"
-      description="Waive late fees for payroll delays or other group exceptions"
+      description="Waive late fees"
       bodyClassName="ui-stack"
       actions={
         <button
@@ -114,7 +114,7 @@ export function PassesWorkspace({
         </p>
       ) : null}
 
-      <div className="ui-desk mb-4">
+      <div className="ui-desk ui-desk-col mb-4">
         <section className="ui-desk-section">
           <label className="ui-field max-w-xl">
             <span className="ui-field-label">Reason (required)</span>
@@ -194,8 +194,8 @@ export function PassesWorkspace({
           title="No open late fees"
         />
       ) : (
-        <div className="ui-desk min-h-0 flex-1 overflow-auto">
-          <ul className="ui-data-cards mb-4">
+        <div className="ui-desk ui-desk-col min-h-0 flex-1 overflow-auto">
+          <ul className="ui-data-cards mb-4 p-3 md:p-4">
             {targets.map((row) => {
               const key = keyOf(row);
               const checked = selected.has(key);

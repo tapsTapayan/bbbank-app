@@ -492,7 +492,7 @@ export function ProfileSettings({
         description={`${name} · ${loginId}${role !== "MEMBER" ? ` · ${role}` : ""}`}
       />
       <div className="ui-fund-stack">
-        <div className="ui-desk">
+        <div className="ui-desk ui-desk-col">
           <div className="ui-desk-split">
             {pinSection}
             {identitySection}

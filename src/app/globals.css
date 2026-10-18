@@ -82,11 +82,11 @@
   --sidebar-w: 15rem;
   --sidebar-w-collapsed: 4.25rem;
   /* Member reading measure — scales with viewport via media queries below */
-  --content-max: 42rem;
-  --content-wide: 72rem;
-  --page-gap: var(--space-5);
+  --content-max: 40rem;
+  --content-wide: 68rem;
+  --page-gap: var(--space-4);
   --page-pad-x: 1rem;
-  --page-pad-y: 1.25rem;
+  --page-pad-y: 1rem;
 
   /* Radii */
   --radius: 0.5rem;
@@ -129,31 +129,40 @@
 
 @media (min-width: 640px) {
   :root {
-    --page-pad-x: 1.5rem;
-    --content-max: 48rem;
+    --page-pad-x: 1.25rem;
+    --page-pad-y: 1.25rem;
+    --content-max: 44rem;
   }
 }
 
 @media (min-width: 768px) {
   :root {
-    --page-gap: var(--space-6);
-    --page-pad-x: 1.75rem;
-    --page-pad-y: 1.75rem;
-    --content-max: 56rem;
+    --page-gap: var(--space-5);
+    --page-pad-x: 1.5rem;
+    --page-pad-y: 1.5rem;
+    --content-max: 52rem;
   }
 }
 
 @media (min-width: 1024px) {
   :root {
-    --page-gap: var(--space-8);
-    --page-pad-x: 2rem;
-    --page-pad-y: 2rem;
-    --content-max: 64rem;
-    --sidebar-w: 15.5rem;
+    --page-gap: var(--space-6);
+    --page-pad-x: 1.75rem;
+    --page-pad-y: 1.5rem;
+    --content-max: 60rem;
+    --sidebar-w: 14.5rem;
   }
 }
 
 @media (min-width: 1280px) {
+  :root {
+    --page-pad-x: 2rem;
+    --content-max: 68rem;
+    --content-wide: 76rem;
+  }
+}
+
+@media (min-width: 1536px) {
   :root {
     --content-max: 72rem;
     --content-wide: 80rem;
@@ -443,16 +452,18 @@
   .ui-fund-main {
     width: 100%;
     max-width: var(--content-max);
+    min-width: 0;
     margin-inline: auto;
     flex: 1;
+    box-sizing: border-box;
     padding-inline: var(--page-pad-x);
     padding-top: var(--page-pad-y);
-    padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 1.25rem);
+    padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 0.75rem);
   }
 
   @media (min-width: 768px) {
     .ui-fund-main {
-      padding-bottom: var(--space-10);
+      padding-bottom: var(--space-8);
     }
   }
 
@@ -705,17 +716,22 @@
   }
 
   /*
-   * Desk shell — multi-section composition (Home primary, Pay, Loans, ops forms).
-   * Prefer this over stacked floating cards.
+   * Desk shell — surface chrome only.
+   * Do NOT set display here: layout modifiers (.ui-pay-shell, .ui-dash-desk,
+   * .ui-desk-col) own display so cascade cannot wipe their grids.
    */
   .ui-desk {
-    display: flex;
-    flex-direction: column;
     border-radius: var(--radius-card);
     border: 1px solid var(--border);
     background: var(--surface-elevated);
     box-shadow: var(--shadow-card);
     overflow: hidden;
+    min-width: 0;
+  }
+
+  .ui-desk-col {
+    display: flex;
+    flex-direction: column;
   }
 
   .ui-desk-section {
@@ -742,7 +758,7 @@
     grid-template-columns: 1fr;
   }
 
-  @media (min-width: 1024px) {
+  @media (min-width: 768px) {
     .ui-desk-split {
       grid-template-columns: 1fr 1fr;
     }
@@ -1136,7 +1152,7 @@
   .ui-fund-stack {
     display: flex;
     flex-direction: column;
-    gap: var(--space-6);
+    gap: var(--page-gap);
   }
 
   .ui-section {
@@ -1162,22 +1178,33 @@
 
   @media (min-width: 768px) {
     .ui-ops-split {
-      grid-template-columns: minmax(14rem, 18rem) minmax(0, 1fr);
+      grid-template-columns: minmax(13rem, 17rem) minmax(0, 1fr);
     }
 
     .ui-ops-split--triple {
-      grid-template-columns: minmax(14rem, 17rem) minmax(0, 1fr);
+      grid-template-columns: minmax(13rem, 16rem) minmax(0, 1fr);
     }
   }
 
   @media (min-width: 1024px) {
+    .ui-ops-split {
+      grid-template-columns: minmax(15rem, 20rem) minmax(0, 1fr);
+    }
+
+    .ui-ops-split--triple {
+      grid-template-columns:
+        minmax(14rem, 17rem) minmax(0, 1.2fr) minmax(16rem, 22rem);
+    }
+  }
+
+  @media (min-width: 1440px) {
     .ui-ops-split {
       grid-template-columns: minmax(16rem, 22rem) minmax(0, 1fr);
     }
 
     .ui-ops-split--triple {
       grid-template-columns:
-        minmax(15rem, 18rem) minmax(0, 1.15fr) minmax(18rem, 24rem);
+        minmax(15rem, 18rem) minmax(0, 1.25fr) minmax(18rem, 24rem);
     }
   }
 
@@ -1327,6 +1354,69 @@
 .overflow-y-auto {
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
+}
+
+/*
+ * Layout locks — last in cascade so desk grids cannot be wiped by .ui-desk chrome.
+ * fund.css is @imported above; these rules intentionally restate the layouts.
+ */
+@layer components {
+  .ui-desk.ui-dash-desk {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .ui-desk.ui-pay-shell {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-width: 0;
+  }
+
+  @media (min-width: 768px) {
+    .ui-desk.ui-dash-desk {
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) minmax(13rem, 17rem);
+      align-items: stretch;
+    }
+  }
+
+  @media (min-width: 860px) {
+    .ui-desk.ui-pay-shell {
+      display: grid;
+      grid-template-columns: minmax(14rem, 17.5rem) minmax(0, 1fr);
+      align-items: stretch;
+    }
+
+    .ui-pay-rail {
+      border-bottom: 0;
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+    }
+  }
+
+  @media (min-width: 1280px) {
+    .ui-desk.ui-pay-shell {
+      grid-template-columns: minmax(16rem, 19rem) minmax(0, 1fr);
+    }
+  }
+
+  /* Contain horizontal overflow from tables / long labels */
+  .ui-fund-frame,
+  .ui-pay-page,
+  .ui-dash,
+  .ui-pay-shell,
+  .ui-dash-desk {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .km-matrix-wrap,
+  .ui-pay-rail,
+  .ui-pay-work {
+    max-width: 100%;
+    min-width: 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

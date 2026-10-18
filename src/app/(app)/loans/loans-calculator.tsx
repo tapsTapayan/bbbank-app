@@ -139,7 +139,7 @@ export function LoansCalculator({
           </div>
         </section>
 
-        <div className="ui-desk">
+        <div className="ui-desk ui-desk-col">
           <div className="ui-desk-split">
             <section aria-labelledby="max-loanable-heading">
               <div className="flex items-center gap-2">
@@ -282,7 +282,7 @@ export function LoansCalculator({
                     ))}
                   </ul>
                   <p className="type-caption">
-                    Late fee ₱10 × {headsCount} head(s) / day after grace.
+                    Late ₱10 × {headsCount}/head/day after grace.
                   </p>
                 </div>
               ) : null}

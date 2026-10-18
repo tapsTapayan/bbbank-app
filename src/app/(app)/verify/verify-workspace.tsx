@@ -151,7 +151,7 @@ export function VerifyWorkspace({
   return (
     <OpsWorkstation
       title="Verify payments"
-      description="Receipt left · details & decision right"
+      description="Pending receipts"
       padded={false}
       actions={
         <>

@@ -179,7 +179,7 @@ export function MembersWorkspace({ users }: { users: MemberRow[] }) {
   return (
     <OpsWorkstation
       title="Accounts"
-      description="Manage member, treasurer, auditor, and admin logins"
+      description="Member and staff accounts"
       bodyClassName="ui-stack"
       actions={
         <>

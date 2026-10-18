@@ -495,13 +495,17 @@ export function AppShell({
         <div
           id="app-main"
           className={clsx(
-            "flex min-h-0 flex-1 flex-col",
+            "flex min-h-0 min-w-0 flex-1 flex-col",
             ops
               ? "overflow-hidden bg-[var(--surface)] pb-[calc(var(--nav-h)+env(safe-area-inset-bottom))] md:pb-0"
-              : "ui-canvas overflow-y-auto",
+              : "ui-canvas overflow-x-hidden overflow-y-auto",
           )}
         >
-          {ops ? children : <div className="ui-fund-main">{children}</div>}
+          {ops ? (
+            children
+          ) : (
+            <div className="ui-fund-main w-full min-w-0">{children}</div>
+          )}
         </div>
 
         {/* Mobile bottom dock */}

@@ -2,13 +2,7 @@
 @layer components {
   /* ── Dashboard — one job, less chrome ───────────────────────── */
   .ui-dash {
-    gap: var(--space-6);
-  }
-
-  @media (min-width: 768px) {
-    .ui-dash {
-      gap: var(--space-8);
-    }
+    gap: var(--page-gap);
   }
 
   .ui-dash-header {
@@ -18,15 +12,20 @@
     gap: var(--space-3);
   }
 
-  /* Primary desk: next due + balances — extends shared .ui-desk */
+  /* Primary desk: next due + balances */
+  .ui-desk.ui-dash-desk {
+    display: flex;
+    flex-direction: column;
+  }
+
   .ui-dash-desk--late {
     border-color: color-mix(in oklab, var(--warning) 40%, var(--border));
   }
 
-  @media (min-width: 1024px) {
-    .ui-dash-desk {
+  @media (min-width: 768px) {
+    .ui-desk.ui-dash-desk {
       display: grid;
-      grid-template-columns: minmax(0, 1.35fr) minmax(14rem, 18rem);
+      grid-template-columns: minmax(0, 1.45fr) minmax(13rem, 17rem);
       align-items: stretch;
     }
   }
@@ -38,7 +37,7 @@
     border-bottom: 1px solid var(--border);
   }
 
-  @media (min-width: 1024px) {
+  @media (min-width: 768px) {
     .ui-dash-due {
       border-bottom: 0;
       border-right: 1px solid var(--border);
@@ -188,26 +187,15 @@
     }
   }
 
-  @media (min-width: 1024px) {
+  @media (min-width: 768px) {
     .ui-dash-balances {
       grid-template-columns: 1fr;
-      gap: var(--space-5);
+      gap: var(--space-4);
     }
 
     .ui-dash-balances .ui-dash-balance:not(:last-child) {
       border-bottom: 1px solid var(--border);
-      padding-bottom: var(--space-4);
-    }
-  }
-
-  @media (min-width: 640px) and (max-width: 1023px) {
-    .ui-dash-balances:has(> :nth-child(3)) {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-
-    .ui-dash-balance:not(:last-child) {
-      border-right: 1px solid var(--border);
-      padding-right: var(--space-4);
+      padding-bottom: var(--space-3);
     }
   }
 
@@ -314,25 +302,25 @@
   }
 
   /*
-   * Pay workstation — one shell: period rail | proof → confirm.
-   * Desktop stays measured (~64–72rem), not stretched to content-wide.
+   * Pay workstation — period rail | work column.
+   * Specificity (.ui-desk.ui-pay-shell) must beat any later .ui-desk rules.
    */
   .ui-fund-main:has(.ui-pay-page) {
-    max-width: 42rem;
+    max-width: var(--content-max);
   }
 
   @media (min-width: 1024px) {
     .ui-fund-main:has(.ui-pay-page) {
-      max-width: 68rem;
+      max-width: min(64rem, 100%);
     }
   }
 
   .ui-pay-page {
     display: flex;
     width: 100%;
+    min-width: 0;
     flex-direction: column;
-    gap: var(--space-5);
-    min-height: 0;
+    gap: var(--page-gap);
   }
 
   .ui-pay-empty {
@@ -342,45 +330,53 @@
     text-align: center;
   }
 
-  /* Pay shell extends shared .ui-desk — must grow with confirm, not clip */
   .ui-desk.ui-pay-shell {
-    overflow: visible;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
   }
 
   .ui-pay-shell--overdue {
     border-color: color-mix(in oklab, var(--warning) 35%, var(--border));
   }
 
-  @media (min-width: 1024px) {
-    .ui-pay-shell {
+  /* Side-by-side from tablet landscape / small laptop up */
+  @media (min-width: 860px) {
+    .ui-desk.ui-pay-shell {
       display: grid;
-      grid-template-columns: minmax(17rem, 20rem) minmax(0, 1fr);
-      align-items: start;
+      grid-template-columns: minmax(14rem, 17.5rem) minmax(0, 1fr);
+      align-items: stretch;
+    }
+  }
+
+  @media (min-width: 1280px) {
+    .ui-desk.ui-pay-shell {
+      grid-template-columns: minmax(16rem, 19rem) minmax(0, 1fr);
     }
   }
 
   .ui-pay-rail {
     display: flex;
     flex-direction: column;
-    gap: var(--space-4);
+    gap: var(--space-3);
     padding: var(--space-4);
     background: var(--surface);
     border-bottom: 1px solid var(--border);
-    border-radius: var(--radius-card) var(--radius-card) 0 0;
+    min-width: 0;
+    /* Mobile: show periods without trapping them in a tiny scroll box */
+    max-height: none;
   }
 
-  @media (min-width: 1024px) {
+  @media (min-width: 860px) {
     .ui-pay-rail {
-      position: sticky;
-      top: var(--space-4);
       border-bottom: 0;
       border-right: 1px solid var(--border);
-      border-radius: var(--radius-card) 0 0 var(--radius-card);
-      max-height: calc(100dvh - 8rem);
+      max-height: none;
       overflow-y: auto;
       overscroll-behavior: contain;
-      padding: var(--space-5);
-      align-self: start;
+      align-self: stretch;
     }
   }
 
@@ -423,16 +419,9 @@
   .ui-pay-work {
     display: flex;
     min-width: 0;
+    flex: 1 1 auto;
     flex-direction: column;
     background: var(--surface-elevated);
-    border-radius: 0 0 var(--radius-card) var(--radius-card);
-  }
-
-  @media (min-width: 1024px) {
-    .ui-pay-work {
-      border-radius: 0 var(--radius-card) var(--radius-card) 0;
-      min-width: 0;
-    }
   }
 
   .ui-pay-context {
@@ -440,15 +429,15 @@
     flex-wrap: wrap;
     align-items: flex-start;
     justify-content: space-between;
-    gap: var(--space-3);
-    padding: var(--space-4);
+    gap: var(--space-2) var(--space-3);
+    padding: var(--space-3) var(--space-4);
     border-bottom: 1px solid var(--border);
     background: color-mix(in oklab, var(--brand-soft) 40%, var(--surface-elevated));
   }
 
   @media (min-width: 768px) {
     .ui-pay-context {
-      padding: var(--space-4) var(--space-5);
+      padding: var(--space-4);
     }
   }
 
@@ -533,7 +522,7 @@
     border-bottom: 1px solid var(--border);
   }
 
-  @media (min-width: 768px) {
+  @media (min-width: 1280px) {
     .ui-pay-panel {
       padding: var(--space-5);
     }
@@ -733,7 +722,7 @@
     margin-top: var(--space-2);
   }
 
-  @media (min-width: 640px) {
+  @media (min-width: 480px) {
     .ui-pay-channels {
       grid-template-columns: repeat(5, minmax(0, 1fr));
     }
@@ -741,14 +730,27 @@
 
   .ui-pay-field-row {
     display: grid;
-    gap: var(--space-4);
+    gap: var(--space-3);
+    grid-template-columns: 1fr;
   }
 
-  @media (min-width: 640px) {
+  @media (min-width: 560px) {
     .ui-pay-field-row {
       grid-template-columns: 1fr 1fr;
       align-items: start;
+      gap: var(--space-4);
     }
+  }
+
+  .ui-pay-fields,
+  .ui-pay-amount-block,
+  .ui-pay-panel {
+    min-width: 0;
+  }
+
+  .ui-pay-fields .ui-input,
+  .ui-pay-amount-block .ui-input {
+    max-width: 100%;
   }
 
   .ui-pay-cta {
@@ -855,9 +857,16 @@
 
   .km-matrix {
     width: 100%;
-    min-width: 36rem;
+    min-width: 28rem;
     border-collapse: separate;
-    border-spacing: 0.35rem 0.5rem;
+    border-spacing: 0.25rem 0.4rem;
+  }
+
+  @media (min-width: 640px) {
+    .km-matrix {
+      min-width: 34rem;
+      border-spacing: 0.35rem 0.5rem;
+    }
   }
 
   .km-matrix-corner {
@@ -892,15 +901,23 @@
   .km-mark {
     display: block;
     width: 100%;
-    max-width: 2.25rem;
-    height: 1.75rem;
+    max-width: 1.75rem;
+    height: 1.4rem;
     margin-inline: auto;
-    border-radius: 0.35rem;
+    border-radius: 0.3rem;
     border: 1px solid transparent;
     text-decoration: none;
     transition:
       transform var(--duration-fast) var(--ease-out),
       box-shadow var(--duration-fast) var(--ease-out);
+  }
+
+  @media (min-width: 640px) {
+    .km-mark {
+      max-width: 2.25rem;
+      height: 1.75rem;
+      border-radius: 0.35rem;
+    }
   }
 
   a.km-mark {

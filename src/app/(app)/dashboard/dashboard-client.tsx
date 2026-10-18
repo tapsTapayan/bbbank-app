@@ -183,13 +183,6 @@ export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
                 </div>
               </dl>
 
-              {nextKinsenas.isCatchUp && nextKinsenas.penaltyAmount === 0 ? (
-                <p className="type-caption mt-3">
-                  Catch-up open — late fees accrue from the open day, not the
-                  original due date.
-                </p>
-              ) : null}
-
               {(nextKinsenas.isOverdue || nextKinsenas.penaltyAmount > 0) && (
                 <div className="ui-dash-due-alert" role="status">
                   <AlertTriangle
@@ -225,9 +218,7 @@ export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
               />
               <div className="min-w-0 flex-1">
                 <p className="type-title">You&apos;re caught up</p>
-                <p className="type-caption mt-1">
-                  No open kinsenas. Advance a period anytime from Pay.
-                </p>
+                <p className="type-caption mt-1">No open kinsenas.</p>
                 <Link
                   href="/pay"
                   className="ui-btn ui-btn-secondary mt-4 sm:w-auto"
@@ -317,7 +308,7 @@ export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
           </div>
           {recentPayments.length === 0 ? (
             <p className="ui-dash-empty type-body-sm type-muted">
-              No submissions yet. Pay when your next kinsenas is due.
+              No submissions yet.
             </p>
           ) : (
             <ul className="ui-dash-list mt-3">

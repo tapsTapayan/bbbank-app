@@ -84,38 +84,26 @@ export function CycleSettings({
   return (
     <OpsWorkstation
       title="Fund cycle"
-      description="Calendar-year sinking fund rules"
+      description={`${currentYear} cycle rules`}
       bodyClassName="ui-page max-w-3xl"
       actions={
         <Settings2 className="h-5 w-5 text-[var(--brand)]" aria-hidden />
       }
     >
-      <p className="type-body-sm type-muted -mt-2 mb-4 max-w-xl">
-        The sinking fund runs on a{" "}
-        <span className="font-medium text-[var(--ink)]">calendar-year cycle</span>
-        . At year end, balances are distributed and a new cycle starts — often
-        with updated treasurers, auditors, and heads counts. Contributions are
-        due every kinsenas (15th / 30th); members may pay half-month or full-month
-        amounts.
-      </p>
-
       {toast ? (
         <p className="ui-alert ui-alert-info mb-4" role="status">
           {toast}
         </p>
       ) : null}
 
-      <div className="ui-desk">
+      <div className="ui-desk ui-desk-col">
         <section className="ui-desk-section">
           <div className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-[var(--brand)]" aria-hidden />
             <h2 className="type-title">Start {currentYear} cycle</h2>
           </div>
           <p className="type-caption">
-            Creates (or reactivates) CPE {currentYear} (Jan 1 – Dec 31), opens
-            this month&apos;s two kinsenas plus the next period, and unlocks
-            member Pay. Update heads / roles on Accounts first if the roster
-            changed.
+            CPE {currentYear} · Jan–Dec · opens this month + next period.
           </p>
           <button
             type="button"

@@ -861,11 +861,9 @@ export function PayForm({
                   <span className="type-body-sm font-medium text-[var(--brand)]">
                     {cashSkip ? "Optional photo" : "Add receipt photo"}
                   </span>
-                  <span className="type-caption">
-                    {cashSkip
-                      ? "Skip if paying in person"
-                      : "Opens confirm after scan"}
-                  </span>
+                  {!cashSkip ? (
+                    <span className="type-caption">Confirm unlocks after scan</span>
+                  ) : null}
                   <input
                     type="file"
                     accept="image/*"
@@ -926,9 +924,7 @@ export function PayForm({
                     <p className="ui-pay-amount-due">
                       {formatPHP(selected.suggestedAmount)}
                     </p>
-                    <p className="type-caption tabular-nums">
-                      Suggested for this period
-                    </p>
+                    <p className="type-caption tabular-nums">Suggested</p>
 
                     <div className="ui-pay-presets">
                       <button

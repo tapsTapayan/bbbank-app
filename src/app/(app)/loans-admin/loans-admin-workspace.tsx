@@ -56,7 +56,7 @@ export function LoansAdminWorkspace({ loans }: { loans: LoanDeskRow[] }) {
   return (
     <OpsWorkstation
       title="Loan requests"
-      description="Approve and disburse member loans against policy caps"
+      description="Approve · disburse"
       padded={false}
     >
       {toast ? (
@@ -69,7 +69,7 @@ export function LoansAdminWorkspace({ loans }: { loans: LoanDeskRow[] }) {
         <EmptyState
           icon={<HandCoins className="h-5 w-5" aria-hidden />}
           title="No open loan requests"
-          description="Pending and approved member requests will list here."
+          description="Nothing in queue."
           className="px-[var(--page-pad-x)]"
         />
       ) : (

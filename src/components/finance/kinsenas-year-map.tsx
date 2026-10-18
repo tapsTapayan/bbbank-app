@@ -265,14 +265,9 @@ export function KinsenasYearMap({
     return (
       <section className="km-open" aria-labelledby={headingId}>
         <div className="km-open-head">
-          <div>
-            <p className="type-label" id={headingId}>
-              Choose a period
-            </p>
-            <p className="type-caption mt-1">
-              Overdue first · then current · then advance
-            </p>
-          </div>
+          <p className="type-label" id={headingId}>
+            Periods
+          </p>
           <p className="type-caption tabular-nums shrink-0">
             {openCount > 0 ? `${openCount} left` : "Clear"}
           </p>
@@ -386,16 +381,13 @@ export function KinsenasYearMap({
 
       {openCount > 0 ? (
         <p className="type-caption mt-3">
-          {openCount} still open
-          {map.counts.overdue > 0 ? ` · ${map.counts.overdue} overdue` : ""}.
-          Tap a cell to pay.
+          {openCount} open
+          {map.counts.overdue > 0 ? ` · ${map.counts.overdue} overdue` : ""}
         </p>
       ) : tracked > 0 ? (
-        <p className="type-caption mt-3">All opened periods are paid.</p>
+        <p className="type-caption mt-3">All paid.</p>
       ) : (
-        <p className="type-caption mt-3">
-          No kinsenas opened yet for this cycle.
-        </p>
+        <p className="type-caption mt-3">No periods opened yet.</p>
       )}
     </section>
   );

@@ -79,7 +79,7 @@ export function AuditWorkspace({ queue }: { queue: AuditQueueItem[] }) {
   return (
     <OpsWorkstation
       title="Audit ledger"
-      description="Mark verified payments as audited or flagged"
+      description="Verified payments"
       padded={false}
     >
       {toast ? (
@@ -92,7 +92,7 @@ export function AuditWorkspace({ queue }: { queue: AuditQueueItem[] }) {
         <EmptyState
           icon={<BookOpenCheck className="h-5 w-5" aria-hidden />}
           title="Audit queue empty"
-          description="Verified treasurer entries appear here. Once audited, records stay immutable."
+          description="Nothing to audit."
           className="px-[var(--page-pad-x)]"
         />
       ) : (
