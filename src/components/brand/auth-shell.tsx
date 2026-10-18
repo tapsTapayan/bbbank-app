@@ -84,7 +84,7 @@ export function AuthShell({
         </div>
 
         <div className="my-auto space-y-3 py-10">
-          <h2 className="type-display text-white">
+          <h2 className="type-display !text-white">
             CPE sinking fund
           </h2>
           <p className="max-w-md text-sm leading-relaxed text-white/75">
