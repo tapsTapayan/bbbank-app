@@ -6,6 +6,7 @@ import {
   AUDITOR_PREFIXES,
   MEMBER_PREFIXES,
   SHARED_OPS_PREFIXES,
+  TREASURER_ADMIN_PREFIXES,
   TREASURER_PREFIXES,
   roleHome,
 } from "@/lib/auth/routes";
@@ -136,6 +137,7 @@ export async function updateSession(request: NextRequest) {
     matchesPrefix(pathname, TREASURER_PREFIXES) ||
     matchesPrefix(pathname, AUDITOR_PREFIXES) ||
     matchesPrefix(pathname, SHARED_OPS_PREFIXES) ||
+    matchesPrefix(pathname, TREASURER_ADMIN_PREFIXES) ||
     matchesPrefix(pathname, ADMIN_PREFIXES);
 
   if (isProtected && !isAuthenticated) {
@@ -146,10 +148,11 @@ export async function updateSession(request: NextRequest) {
     return supabaseResponse;
   }
 
-  // Admin: account management (+ own profile) only — no ops or member portal.
+  // Admin: account management + kinsenas (+ own profile) — no other ops/member portal.
   if (role === "ADMIN") {
     const adminAllowed =
       matchesPrefix(pathname, ADMIN_PREFIXES) ||
+      matchesPrefix(pathname, TREASURER_ADMIN_PREFIXES) ||
       matchesPrefix(pathname, ["/profile"]);
     if (!adminAllowed) {
       return redirectTo("/unauthorized");
@@ -159,6 +162,12 @@ export async function updateSession(request: NextRequest) {
 
   if (matchesPrefix(pathname, SHARED_OPS_PREFIXES)) {
     if (role !== "TREASURER" && role !== "AUDITOR") {
+      return redirectTo("/unauthorized");
+    }
+  }
+
+  if (matchesPrefix(pathname, TREASURER_ADMIN_PREFIXES)) {
+    if (role !== "TREASURER") {
       return redirectTo("/unauthorized");
     }
   }

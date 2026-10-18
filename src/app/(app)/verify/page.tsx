@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { requirePageUser } from "@/lib/auth/session";
 import { getPendingVerificationQueue } from "@/lib/queries/pending-submissions";
 import { VerifyWorkspace } from "./verify-workspace";
@@ -6,6 +7,7 @@ import { VerifyWorkspace } from "./verify-workspace";
 export const instant = false;
 
 export default async function VerifyPage() {
+  await connection();
   await requirePageUser(["TREASURER"], "/verify");
 
   const queue = await getPendingVerificationQueue();

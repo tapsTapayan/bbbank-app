@@ -59,7 +59,11 @@ export function KinsenasWorkspace({
   return (
     <OpsWorkstation
       title="Kinsenas"
-      description={cycleName ?? undefined}
+      description={
+        cycleName
+          ? `${cycleName} · auto-opens on each due day`
+          : "Auto-opens on each due day"
+      }
       actions={
         <>
           {toast ? (
@@ -83,7 +87,13 @@ export function KinsenasWorkspace({
               Cycle settings
             </Link>
           </div>
-        ) : null}
+        ) : (
+          <p className="type-caption text-[var(--ink-muted)]">
+            New periods open automatically at midnight PH when a kinsena due
+            day arrives (15th or month-end). Use the buttons below only to
+            catch up early or recover a missed run.
+          </p>
+        )}
 
         {/* Recommended Bulk Window Card */}
         <section className="rl-vault-card">
@@ -91,10 +101,10 @@ export function KinsenasWorkspace({
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h2 className="text-xl font-bold text-white">
-                  Open payable window
+                  Manual catch-up
                 </h2>
                 <p className="mt-1.5 text-xs text-white/80">
-                  Cycle start through next kinsena · ₱250 × heads
+                  Open cycle start through next payable kinsena · ₱250 × heads
                 </p>
               </div>
             </div>

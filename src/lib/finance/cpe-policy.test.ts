@@ -211,6 +211,22 @@ describe("computeLiveLateFee", () => {
     expect(fee.isWithinGrace).toBe(true);
     expect(fee.chargeableDays).toBe(0);
   });
+
+  it("honors an extended stored graceDeadline over cycle default", () => {
+    // Due Mar 15, default grace ends Mar 17; extended grace ends Mar 20.
+    // As of Mar 20 → still within extended grace (0 chargeable days).
+    const fee = computeLiveLateFee({
+      dueDate: new Date(2026, 2, 15),
+      openedAt: new Date(2026, 2, 1),
+      headsCount: 4,
+      now: new Date(2026, 2, 20),
+      graceDeadline: new Date(2026, 2, 20),
+    });
+    expect(fee.gracePeriodDays).toBe(5);
+    expect(fee.chargeableDays).toBe(0);
+    expect(fee.penaltyAmount.toFixed(2)).toBe("0.00");
+    expect(fee.isWithinGrace).toBe(true);
+  });
 });
 
 describe("allocateContributionPayment", () => {

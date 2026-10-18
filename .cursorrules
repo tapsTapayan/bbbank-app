@@ -31,7 +31,7 @@
 - Example: Deadline March 15 → grace March 16 & 17 → paid March 20 = 3 chargeable days → `3 × ₱10 × 4 heads = ₱120`.
 - Formula: `chargeableDays = max(0, calendarDays(dueDate → asOf) − 2)`; `penalty = chargeableDays × 10 × headsCount`.
 - **Freeze** penalty accrual at the timestamp the member submits a valid receipt (`PaymentSubmission.createdAt` while `PENDING_VERIFICATION` / until verified). If the receipt is **REJECTED**, resume accrual from that point.
-- Daily cron (`/api/cron/penalties`) marks past-grace `UNPAID`/`PARTIAL` rows as `OVERDUE` and refreshes `daysDelayed` + `penaltyAmount`.
+- Daily cron (`/api/cron/penalties`) auto-opens the next kinsena when a due day arrives (15th / EOM), then marks past-grace `UNPAID`/`PARTIAL` rows as `OVERDUE` and refreshes `daysDelayed` + `penaltyAmount`.
 
 ### Rule #1 — Loanable Amount Cap
 - `Max Loanable = (Total Monthly Pool Collectibles × 0.50) × member.headsCount`.

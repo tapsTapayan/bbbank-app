@@ -5,7 +5,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
  * Bump when the generated client shape changes (e.g. User.prepaidCredit,
  * PenaltyWaiver) so hot-reload does not keep a stale PrismaClient in `globalThis`.
  */
-const PRISMA_SINGLETON_KEY = "bbbank.prisma.v5-cash-paid-at";
+const PRISMA_SINGLETON_KEY = "bbbank.prisma.v6-verify-alloc-summary";
 
 const globalForPrisma = globalThis as unknown as {
   prismaByKey?: Record<string, PrismaClient | undefined>;

@@ -57,6 +57,7 @@ export async function planSubmissionAllocation(params: {
             headsCount: c.headsSnapshot,
             now: asOf,
             gracePeriodDays: c.cycle.gracePeriodDays ?? GRACE_PERIOD_DAYS,
+            graceDeadline: c.graceDeadline,
             ratePerHeadPerDay: c.cycle.penaltyRate.toString(),
             // Freeze accrual clock at the payment transaction date (same as verify queue).
             pendingSubmittedAt: asOf,
@@ -122,6 +123,7 @@ export async function planSubmissionAllocation(params: {
           headsCount: heads,
           now: asOf,
           gracePeriodDays: a.loan.cycle.gracePeriodDays ?? GRACE_PERIOD_DAYS,
+          graceDeadline: a.graceDeadline,
           ratePerHeadPerDay: a.loan.cycle.penaltyRate.toString(),
           pendingSubmittedAt: asOf,
         });

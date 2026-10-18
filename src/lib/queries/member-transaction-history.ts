@@ -173,14 +173,20 @@ export async function getMemberTransactionHistory(
         });
         if (planned.lines.length === 0) return;
         plannedById.set(row.id, planned.lines);
-        await prisma.paymentSubmission.update({
+        await prisma.paymentSubmission.updateMany({
           where: { id: row.id },
           data: {
             allocationSummary: planned.summary,
             ...(planned.primaryTargetId
               ? row.targetType === "CONTRIBUTION"
-                ? { contributionId: planned.primaryTargetId }
-                : { loanAmortizationId: planned.primaryTargetId }
+                ? {
+                    contributionId: planned.primaryTargetId,
+                    loanAmortizationId: null,
+                  }
+                : {
+                    loanAmortizationId: planned.primaryTargetId,
+                    contributionId: null,
+                  }
               : {}),
           },
         });

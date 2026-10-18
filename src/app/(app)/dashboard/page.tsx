@@ -177,6 +177,7 @@ async function loadDashboard(userId: string): Promise<MemberDashboardData> {
         now,
         gracePeriodDays:
           activeLoan.cycle.gracePeriodDays ?? GRACE_PERIOD_DAYS,
+        graceDeadline: a.graceDeadline,
         ratePerHeadPerDay: activeLoan.cycle.penaltyRate.toString(),
         pendingSubmittedAt,
         rejectedWindows,
@@ -209,6 +210,7 @@ async function loadDashboard(userId: string): Promise<MemberDashboardData> {
         now,
         gracePeriodDays:
           activeLoan.cycle.gracePeriodDays ?? GRACE_PERIOD_DAYS,
+        graceDeadline: next.graceDeadline,
         ratePerHeadPerDay: activeLoan.cycle.penaltyRate.toString(),
         pendingSubmittedAt,
         rejectedWindows,
@@ -257,6 +259,7 @@ async function loadDashboard(userId: string): Promise<MemberDashboardData> {
       headsCount: nextContribution.headsSnapshot,
       now,
       gracePeriodDays: graceDays,
+      graceDeadline: nextContribution.graceDeadline,
       ratePerHeadPerDay: nextContribution.cycle.penaltyRate.toString(),
       pendingSubmittedAt,
       rejectedWindows,
@@ -313,14 +316,20 @@ async function loadDashboard(userId: string): Promise<MemberDashboardData> {
         });
         if (planned.lines.length === 0) return;
         recentPlanned.set(p.id, planned.lines);
-        await prisma.paymentSubmission.update({
+        await prisma.paymentSubmission.updateMany({
           where: { id: p.id },
           data: {
             allocationSummary: planned.summary,
             ...(planned.primaryTargetId
               ? p.targetType === "CONTRIBUTION"
-                ? { contributionId: planned.primaryTargetId }
-                : { loanAmortizationId: planned.primaryTargetId }
+                ? {
+                    contributionId: planned.primaryTargetId,
+                    loanAmortizationId: null,
+                  }
+                : {
+                    loanAmortizationId: planned.primaryTargetId,
+                    contributionId: null,
+                  }
               : {}),
           },
         });

@@ -236,15 +236,20 @@ export function computeLiveLateFee(params: {
   headsCount: number;
   now: Date;
   gracePeriodDays?: number;
+  /** Stored/extended grace end — overrides cycle gracePeriodDays when set. */
+  graceDeadline?: Date;
   ratePerHeadPerDay?: Decimal.Value;
   pendingSubmittedAt?: Date | null;
   rejectedWindows?: ReadonlyArray<RejectedPenaltyWindow>;
 }): LiveLateFeeResult {
-  const gracePeriodDays = params.gracePeriodDays ?? GRACE_PERIOD_DAYS;
-  const policyGraceDeadline = computeGraceDeadline(
-    params.dueDate,
-    gracePeriodDays,
-  );
+  const gracePeriodDays =
+    params.graceDeadline != null
+      ? Math.max(0, calendarDaysBetween(params.dueDate, params.graceDeadline))
+      : (params.gracePeriodDays ?? GRACE_PERIOD_DAYS);
+  const policyGraceDeadline =
+    params.graceDeadline != null
+      ? startOfLocalDay(params.graceDeadline)
+      : computeGraceDeadline(params.dueDate, gracePeriodDays);
   const isCatchUp = isCatchUpOpen(
     params.dueDate,
     params.openedAt,
@@ -258,6 +263,7 @@ export function computeLiveLateFee(params: {
   });
   const fee = calculateKinsenaLateFee(penaltyDue, asOf, params.headsCount, {
     gracePeriodDays,
+    graceDeadline: policyGraceDeadline,
     ratePerHeadPerDay: params.ratePerHeadPerDay,
   });
   return {
@@ -328,7 +334,12 @@ export function calculateKinsenaLateFee(
   dueDate: Date,
   asOf: Date,
   headsCount: number,
-  options?: { gracePeriodDays?: number; ratePerHeadPerDay?: Decimal.Value },
+  options?: {
+    gracePeriodDays?: number;
+    /** Stored/extended grace end — overrides gracePeriodDays when set. */
+    graceDeadline?: Date;
+    ratePerHeadPerDay?: Decimal.Value;
+  },
 ): LateFeeBreakdown {
   if (!(dueDate instanceof Date) || Number.isNaN(dueDate.getTime())) {
     throw new Error("dueDate must be a valid Date");
@@ -340,9 +351,15 @@ export function calculateKinsenaLateFee(
     throw new Error("headsCount must be an integer >= 1");
   }
 
-  const gracePeriodDays = options?.gracePeriodDays ?? GRACE_PERIOD_DAYS;
+  const gracePeriodDays =
+    options?.graceDeadline != null
+      ? Math.max(0, calendarDaysBetween(dueDate, options.graceDeadline))
+      : (options?.gracePeriodDays ?? GRACE_PERIOD_DAYS);
   const rate = toMoney(options?.ratePerHeadPerDay ?? LATE_FEE_PER_HEAD_PER_DAY);
-  const graceDeadline = computeGraceDeadline(dueDate, gracePeriodDays);
+  const graceDeadline =
+    options?.graceDeadline != null
+      ? startOfLocalDay(options.graceDeadline)
+      : computeGraceDeadline(dueDate, gracePeriodDays);
   const calendarDaysPastDue = calendarDaysBetween(dueDate, asOf);
   const chargeableDays = Math.max(0, calendarDaysPastDue - gracePeriodDays);
   const penaltyAmount = toMoney(rate.mul(headsCount).mul(chargeableDays));

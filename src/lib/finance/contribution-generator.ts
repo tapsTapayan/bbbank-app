@@ -4,8 +4,11 @@ import { prisma } from "@/lib/db";
 import {
   calculateKinsenasDue,
   computeGraceDeadline,
+  computeLiveLateFee,
   dateOnlyUTC,
+  effectivePenaltyAmount,
   getKinsenaDueDate,
+  GRACE_PERIOD_DAYS,
   startOfLocalDay,
 } from "./cpe-policy";
 import {
@@ -23,8 +26,8 @@ export type OpenKinsenaInput = {
   monthIndex: number;
   kinsenaIndex: 1 | 2;
   cycleId?: string;
-  /** Actor who opened the period (for prepaid auto-apply ledger). */
-  openedById: string;
+  /** Optional actor id (manual open / cycle activate). Unused by create path today. */
+  openedById?: string;
 };
 
 export type OpenKinsenaResult = {
@@ -273,10 +276,153 @@ export function nextPeriodAfter(params: {
 }
 
 /**
- * Ensures open contribution rows can absorb `paymentAmount` for a member:
- * opens the payable window through the next advance, then opens further
- * advance kinsenas (up to cycle end) until coverage ≥ amount or the cycle ends.
- * Leftover beyond that still becomes prepaid at verify.
+ * Create one contribution row for a single member if missing.
+ * Unlike openKinsenaPeriod, does not touch other members (safe for verify path).
+ */
+async function ensureMemberKinsenaPeriod(params: {
+  userId: string;
+  cycleId: string;
+  year: number;
+  monthIndex: number;
+  kinsenaIndex: 1 | 2;
+}): Promise<boolean> {
+  const cycle = await prisma.fundCycle.findUniqueOrThrow({
+    where: { id: params.cycleId },
+    select: { contributionAmount: true, gracePeriodDays: true },
+  });
+  const member = await prisma.user.findUnique({
+    where: { id: params.userId },
+    select: { id: true, headsCount: true, prepaidCredit: true },
+  });
+  if (!member) return false;
+
+  const periodMonth = periodMonthDate(params.year, params.monthIndex);
+  const existing = await prisma.contribution.findUnique({
+    where: {
+      userId_cycleId_periodMonth_kinsenaIndex: {
+        userId: params.userId,
+        cycleId: params.cycleId,
+        periodMonth,
+        kinsenaIndex: params.kinsenaIndex,
+      },
+    },
+    select: { id: true },
+  });
+  if (existing) return false;
+
+  const heads = Math.max(1, member.headsCount);
+  const amountDue = calculateKinsenasDue(
+    heads,
+    cycle.contributionAmount.toString(),
+  );
+  const dueDate = getKinsenaDueDate(
+    params.year,
+    params.monthIndex,
+    params.kinsenaIndex,
+  );
+  const graceDeadline = computeGraceDeadline(dueDate, cycle.gracePeriodDays);
+
+  await prisma.$transaction(async (tx) => {
+    const row = await tx.contribution.create({
+      data: {
+        userId: member.id,
+        cycleId: params.cycleId,
+        periodMonth,
+        kinsenaIndex: params.kinsenaIndex,
+        headsSnapshot: heads,
+        amountDue: new Prisma.Decimal(amountDue.toFixed(2)),
+        dueDate,
+        graceDeadline,
+      },
+    });
+
+    const prepaid = toMoney(member.prepaidCredit?.toString() ?? "0");
+    if (prepaid.lte(0)) return;
+
+    const allocation = allocateContributionPayment(prepaid, {
+      amountDue,
+      amountPaid: 0,
+      penaltyAmount: 0,
+    });
+    const applied = toMoney(
+      allocation.toPenalty.plus(allocation.toPrincipal),
+    );
+    if (applied.lte(0)) return;
+
+    const status = contributionStatusAfterPayment(
+      { amountDue, amountPaid: 0, penaltyAmount: 0 },
+      applied,
+      "UNPAID",
+    );
+
+    await tx.contribution.update({
+      where: { id: row.id },
+      data: {
+        amountPaid: new Prisma.Decimal(applied.toFixed(2)),
+        status,
+      },
+    });
+    await tx.user.update({
+      where: { id: member.id },
+      data: {
+        prepaidCredit: new Prisma.Decimal(prepaid.minus(applied).toFixed(2)),
+      },
+    });
+  });
+
+  return true;
+}
+
+async function memberOpenCoverageAsOf(params: {
+  userId: string;
+  cycleId: string;
+  asOf: Date;
+}): Promise<Decimal> {
+  const openRows = await prisma.contribution.findMany({
+    where: {
+      userId: params.userId,
+      cycleId: params.cycleId,
+      status: { in: ["UNPAID", "PARTIAL", "OVERDUE"] },
+    },
+    include: {
+      cycle: { select: { gracePeriodDays: true, penaltyRate: true } },
+    },
+  });
+
+  let openTotal = new Decimal(0);
+  for (const row of openRows) {
+    const waived = row.penaltyWaivedAmount?.toString() ?? "0";
+    let penalty = row.penaltyAmount.toString();
+    if (!row.penaltyAccrualFrozen) {
+      const fee = computeLiveLateFee({
+        dueDate: row.dueDate,
+        openedAt: row.createdAt,
+        headsCount: row.headsSnapshot,
+        now: params.asOf,
+        gracePeriodDays: row.cycle.gracePeriodDays ?? GRACE_PERIOD_DAYS,
+        graceDeadline: row.graceDeadline,
+        ratePerHeadPerDay: row.cycle.penaltyRate.toString(),
+        pendingSubmittedAt: params.asOf,
+      });
+      penalty = effectivePenaltyAmount(fee.penaltyAmount, waived).toFixed(2);
+    } else {
+      penalty = effectivePenaltyAmount(penalty, waived).toFixed(2);
+    }
+    const dues = remainingContributionDues({
+      amountDue: row.amountDue.toString(),
+      amountPaid: row.amountPaid.toString(),
+      penaltyAmount: penalty,
+      penaltyWaivedAmount: 0,
+    });
+    openTotal = openTotal.plus(dues.totalDue);
+  }
+  return openTotal;
+}
+
+/**
+ * Ensures THIS member has open contribution rows that can absorb paymentAmount.
+ * Opens only missing periods for that member (never re-opens all members).
+ * Leftover beyond cycle end still becomes prepaid at verify.
  */
 export async function ensureContributionCoverageForAmount(params: {
   userId: string;
@@ -289,14 +435,6 @@ export async function ensureContributionCoverageForAmount(params: {
   const payment = toMoney(params.paymentAmount);
   if (payment.lte(0)) return { createdTotal: 0 };
 
-  let createdTotal = 0;
-  const window = await openPayableContributionWindow({
-    openedById: params.openedById,
-    cycleId: params.cycleId,
-    asOf,
-  });
-  createdTotal += window.createdTotal;
-
   const cycle = await prisma.fundCycle.findUniqueOrThrow({
     where: { id: params.cycleId },
   });
@@ -306,31 +444,38 @@ export async function ensureContributionCoverageForAmount(params: {
     kinsenaIndex: 2,
   });
 
-  for (let i = 0; i < 24; i += 1) {
-    const openRows = await prisma.contribution.findMany({
-      where: {
-        userId: params.userId,
-        cycleId: params.cycleId,
-        status: { in: ["UNPAID", "PARTIAL", "OVERDUE"] },
-      },
-      select: {
-        amountDue: true,
-        amountPaid: true,
-        penaltyAmount: true,
-        penaltyWaivedAmount: true,
-      },
-    });
+  const through = nextKinsenaPeriod(asOf);
+  const lastInCycle = {
+    year: cycle.endDate.getUTCFullYear(),
+    monthIndex: cycle.endDate.getUTCMonth(),
+    kinsenaIndex: 2 as const,
+  };
+  const cappedThrough =
+    periodSortKey(through) <= periodSortKey(lastInCycle)
+      ? through
+      : lastInCycle;
 
-    let openTotal = new Decimal(0);
-    for (const row of openRows) {
-      const dues = remainingContributionDues({
-        amountDue: row.amountDue.toString(),
-        amountPaid: row.amountPaid.toString(),
-        penaltyAmount: row.penaltyAmount.toString(),
-        penaltyWaivedAmount: row.penaltyWaivedAmount?.toString() ?? "0",
-      });
-      openTotal = openTotal.plus(dues.totalDue);
-    }
+  let createdTotal = 0;
+  const seedPeriods = kinsenaPeriodsThrough({
+    fromYear: cycle.startDate.getUTCFullYear(),
+    fromMonthIndex: cycle.startDate.getUTCMonth(),
+    through: cappedThrough,
+  });
+  for (const period of seedPeriods) {
+    const created = await ensureMemberKinsenaPeriod({
+      userId: params.userId,
+      cycleId: params.cycleId,
+      ...period,
+    });
+    if (created) createdTotal += 1;
+  }
+
+  for (let i = 0; i < 24; i += 1) {
+    const openTotal = await memberOpenCoverageAsOf({
+      userId: params.userId,
+      cycleId: params.cycleId,
+      asOf,
+    });
     if (payment.lte(openTotal)) break;
 
     const latest = await prisma.contribution.findFirst({
@@ -346,34 +491,24 @@ export async function ensureContributionCoverageForAmount(params: {
     });
     if (periodSortKey(next) > cycleEndKey) break;
 
-    const opened = await openKinsenaPeriod({
-      ...next,
+    const created = await ensureMemberKinsenaPeriod({
+      userId: params.userId,
       cycleId: params.cycleId,
-      openedById: params.openedById,
+      ...next,
     });
-    createdTotal += opened.created;
-    if (opened.created === 0 && opened.skippedExisting > 0) {
-      // Period exists for others but maybe not this member — openKinsenaPeriod
-      // creates per-member; skipped means this member already has it.
-      // Avoid infinite loop if coverage still short (e.g. PAID rows only).
-      const stillMissing = await prisma.contribution.findFirst({
-        where: {
-          userId: params.userId,
-          cycleId: params.cycleId,
-          periodMonth: periodMonthDate(next.year, next.monthIndex),
-          kinsenaIndex: next.kinsenaIndex,
-        },
-        select: { id: true, status: true },
-      });
-      if (!stillMissing || stillMissing.status === "PAID") break;
+    if (created) {
+      createdTotal += 1;
+      continue;
     }
+    // Already exists (likely PAID) — cannot extend coverage further this way.
+    break;
   }
 
   return { createdTotal };
 }
 
 export async function openPayableContributionWindow(params: {
-  openedById: string;
+  openedById?: string;
   cycleId?: string;
   asOf?: Date;
 }): Promise<{
@@ -426,4 +561,37 @@ export async function openPayableContributionWindow(params: {
   }
 
   return { results, createdTotal };
+}
+
+/**
+ * Daily / scheduled auto-open: when a kinsena due day arrives (15th or EOM),
+ * `nextKinsenaPeriod` advances and the successor period is created for all
+ * active members. Idempotent — skips rows that already exist. No-ops when
+ * there is no active fund cycle.
+ */
+export async function autoOpenScheduledKinsenas(params?: {
+  asOf?: Date;
+  openedById?: string;
+}): Promise<{
+  opened: boolean;
+  createdTotal: number;
+  through: { year: number; monthIndex: number; kinsenaIndex: 1 | 2 } | null;
+}> {
+  const asOf = params?.asOf ?? new Date();
+  const cycle = await prisma.fundCycle.findFirst({
+    where: { isActive: true },
+    select: { id: true },
+  });
+  if (!cycle) {
+    return { opened: false, createdTotal: 0, through: null };
+  }
+
+  const through = nextKinsenaPeriod(asOf);
+  const { createdTotal } = await openPayableContributionWindow({
+    cycleId: cycle.id,
+    asOf,
+    openedById: params?.openedById,
+  });
+
+  return { opened: true, createdTotal, through };
 }

@@ -7,22 +7,21 @@ export const MEMBER_PREFIXES = [
   "/loans",
   "/profile",
 ] as const;
-export const TREASURER_PREFIXES = [
-  "/verify",
-  "/loans-admin",
-  "/kinsenas",
-] as const;
+export const TREASURER_PREFIXES = ["/verify", "/loans-admin"] as const;
 export const AUDITOR_PREFIXES = ["/audit"] as const;
 /** Shared ops for treasurer + auditor (penalty passes). */
 export const SHARED_OPS_PREFIXES = ["/passes"] as const;
+/** Shared ops for treasurer + admin (open/manage kinsenas periods). */
+export const TREASURER_ADMIN_PREFIXES = ["/kinsenas"] as const;
 /** Admin account-management console (not treasurer/auditor/member ops). */
-export const ADMIN_PREFIXES = ["/members", "/cycle", "/kinsenas"] as const;
+export const ADMIN_PREFIXES = ["/members", "/cycle"] as const;
 
 const SAFE_PREFIXES = [
   ...MEMBER_PREFIXES,
   ...TREASURER_PREFIXES,
   ...AUDITOR_PREFIXES,
   ...SHARED_OPS_PREFIXES,
+  ...TREASURER_ADMIN_PREFIXES,
   ...ADMIN_PREFIXES,
 ] as const;
 
@@ -69,6 +68,7 @@ export function canAccessPath(role: UserRole, pathname: string): boolean {
   if (role === "ADMIN") {
     return (
       matchesPrefix(pathname, ADMIN_PREFIXES) ||
+      matchesPrefix(pathname, TREASURER_ADMIN_PREFIXES) ||
       matchesPrefix(pathname, ["/profile"])
     );
   }
@@ -77,6 +77,9 @@ export function canAccessPath(role: UserRole, pathname: string): boolean {
   }
   if (matchesPrefix(pathname, SHARED_OPS_PREFIXES)) {
     return role === "TREASURER" || role === "AUDITOR";
+  }
+  if (matchesPrefix(pathname, TREASURER_ADMIN_PREFIXES)) {
+    return role === "TREASURER";
   }
   if (matchesPrefix(pathname, TREASURER_PREFIXES)) {
     return role === "TREASURER";

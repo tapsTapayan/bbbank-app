@@ -25,8 +25,15 @@ export type VerifyQueueItem = {
   receiptSignedUrl: string | null;
   /** Member-declared payment calendar date (ISO). */
   paidAt: string;
-  status: "PENDING_VERIFICATION";
+  status:
+    | "PENDING_VERIFICATION"
+    | "VERIFIED"
+    | "REJECTED"
+    | "AUDITED"
+    | "FLAGGED";
   submittedAt: string;
+  /** When treasurer decided (null while pending). */
+  verifiedAt: string | null;
   remarks: string | null;
   aiExtractedAmount: number | null;
   aiExtractedRefNo: string | null;
@@ -71,61 +78,74 @@ function contributionLabel(periodMonth: Date, kinsenaIndex: number): string {
   return `${month} ${kinsena} Contribution`;
 }
 
-/**
- * Loads PENDING_VERIFICATION submissions for the treasurer queue.
- * Late fees are as of the payment transaction date (paidAt), falling
- * back to submittedAt when paidAt is missing — Rule #3 freeze clock.
- */
-export async function getPendingVerificationQueue(): Promise<VerifyQueueItem[]> {
-  const rows = await prisma.paymentSubmission.findMany({
-    where: { status: "PENDING_VERIFICATION" },
-    orderBy: { createdAt: "asc" },
-    include: {
-      user: { select: { name: true, email: true, headsCount: true } },
-      contribution: {
+const verifyInclude = {
+  user: { select: { name: true, email: true, headsCount: true } },
+  contribution: {
+    select: {
+      id: true,
+      periodMonth: true,
+      kinsenaIndex: true,
+      dueDate: true,
+      graceDeadline: true,
+      headsSnapshot: true,
+      amountDue: true,
+      amountPaid: true,
+      penaltyAmount: true,
+      penaltyWaivedAmount: true,
+      penaltyAccrualFrozen: true,
+      daysDelayed: true,
+      createdAt: true,
+      cycle: { select: { gracePeriodDays: true, penaltyRate: true } },
+    },
+  },
+  loanAmortization: {
+    select: {
+      id: true,
+      installmentNumber: true,
+      dueDate: true,
+      graceDeadline: true,
+      headsSnapshot: true,
+      principalComponent: true,
+      interestComponent: true,
+      amountPaid: true,
+      penaltyAmount: true,
+      penaltyWaivedAmount: true,
+      penaltyAccrualFrozen: true,
+      daysDelayed: true,
+      createdAt: true,
+      loan: {
         select: {
           id: true,
-          periodMonth: true,
-          kinsenaIndex: true,
-          dueDate: true,
-          graceDeadline: true,
           headsSnapshot: true,
-          amountDue: true,
-          amountPaid: true,
-          penaltyAmount: true,
-          penaltyWaivedAmount: true,
-          penaltyAccrualFrozen: true,
-          daysDelayed: true,
-          createdAt: true,
           cycle: { select: { gracePeriodDays: true, penaltyRate: true } },
         },
       },
-      loanAmortization: {
-        select: {
-          id: true,
-          installmentNumber: true,
-          dueDate: true,
-          graceDeadline: true,
-          headsSnapshot: true,
-          principalComponent: true,
-          interestComponent: true,
-          amountPaid: true,
-          penaltyAmount: true,
-          penaltyWaivedAmount: true,
-          penaltyAccrualFrozen: true,
-          daysDelayed: true,
-          createdAt: true,
-          loan: {
-            select: {
-              id: true,
-              headsSnapshot: true,
-              cycle: { select: { gracePeriodDays: true, penaltyRate: true } },
-            },
-          },
-        },
-      },
     },
-  });
+  },
+} as const;
+
+/**
+ * Treasurer verify desk: open pending queue + recent decided submissions.
+ * Late fees for pending rows use paidAt (Rule #3 freeze clock).
+ */
+export async function getPendingVerificationQueue(): Promise<VerifyQueueItem[]> {
+  const [pendingRows, decidedRows] = await Promise.all([
+    prisma.paymentSubmission.findMany({
+      where: { status: "PENDING_VERIFICATION" },
+      orderBy: { createdAt: "asc" },
+      include: verifyInclude,
+    }),
+    prisma.paymentSubmission.findMany({
+      where: {
+        status: { in: ["VERIFIED", "REJECTED", "AUDITED", "FLAGGED"] },
+      },
+      orderBy: [{ verifiedAt: "desc" }, { updatedAt: "desc" }],
+      take: 50,
+      include: verifyInclude,
+    }),
+  ]);
+
+  const rows = [...pendingRows, ...decidedRows];
 
   return Promise.all(
     rows.map(async (row) => {
@@ -202,6 +222,7 @@ export async function getPendingVerificationQueue(): Promise<VerifyQueueItem[]> 
           headsCount: headsSnapshot,
           now: asOf,
           gracePeriodDays,
+          graceDeadline: graceDeadline ?? undefined,
           ratePerHeadPerDay,
           pendingSubmittedAt: asOf,
         });
@@ -246,14 +267,16 @@ export async function getPendingVerificationQueue(): Promise<VerifyQueueItem[]> 
     const allocationPreview =
       storedAlloc.length > 0
         ? storedAlloc
-        : (
-            await planSubmissionAllocation({
-              userId: row.userId,
-              amount: row.amount.toString(),
-              targetType: row.targetType,
-              paidAt: row.paidAt ?? row.createdAt,
-            })
-          ).lines;
+        : row.status === "PENDING_VERIFICATION"
+          ? (
+              await planSubmissionAllocation({
+                userId: row.userId,
+                amount: row.amount.toString(),
+                targetType: row.targetType,
+                paidAt: row.paidAt ?? row.createdAt,
+              })
+            ).lines
+          : [];
 
     return {
       id: row.id,
@@ -269,8 +292,9 @@ export async function getPendingVerificationQueue(): Promise<VerifyQueueItem[]> 
       receiptStoragePath: row.receiptUrl,
       receiptSignedUrl: null,
       paidAt: row.paidAt.toISOString(),
-      status: "PENDING_VERIFICATION" as const,
+      status: row.status,
       submittedAt: row.createdAt.toISOString(),
+      verifiedAt: row.verifiedAt?.toISOString() ?? null,
       remarks: row.remarks,
       aiExtractedAmount:
         row.aiExtractedAmount != null

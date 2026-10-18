@@ -6,18 +6,16 @@ import {
   startOfLocalDay,
   type RejectedPenaltyWindow,
 } from "@/lib/finance/cpe-policy";
+import { autoOpenScheduledKinsenas } from "@/lib/finance/contribution-generator";
 
 /**
- * Daily CPE Rule #3 penalty accrual.
+ * Daily fund maintenance (Vercel cron, midnight PH / 16:00 UTC).
  *
- * Scans UNPAID / PARTIAL contributions and loan amortizations past graceDeadline,
- * marks OVERDUE, and refreshes daysDelayed + penaltyAmount.
+ * 1. Auto-open kinsenas: when a due day arrives (15th or EOM), create
+ *    Contribution rows through the newly payable period for all active members.
+ * 2. CPE Rule #3 penalty accrual on open obligations past grace.
  *
- * Freeze: PENDING_VERIFICATION freezes at submission createdAt.
- * After REJECTED, accrual resumes excluding the pending window (not full due→now).
- * Accrual always follows Rule #3 from the policy due date (via computeLiveLateFee).
- *
- * Secure with Authorization: Bearer ${CRON_SECRET} (Vercel cron).
+ * Secure with Authorization: Bearer ${CRON_SECRET}.
  */
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
@@ -32,6 +30,8 @@ export async function GET(request: NextRequest) {
   const today = startOfLocalDay(now);
 
   try {
+    const kinsenas = await autoOpenScheduledKinsenas({ asOf: now });
+
     const [contributions, amortizations] = await Promise.all([
       prisma.contribution.findMany({
         where: {
@@ -91,6 +91,7 @@ export async function GET(request: NextRequest) {
         headsCount: row.headsSnapshot,
         now,
         gracePeriodDays: row.cycle.gracePeriodDays ?? GRACE_PERIOD_DAYS,
+        graceDeadline: row.graceDeadline,
         ratePerHeadPerDay: row.cycle.penaltyRate.toString(),
         pendingSubmittedAt,
         rejectedWindows,
@@ -128,6 +129,7 @@ export async function GET(request: NextRequest) {
         headsCount: heads,
         now,
         gracePeriodDays: row.loan.cycle.gracePeriodDays ?? GRACE_PERIOD_DAYS,
+        graceDeadline: row.graceDeadline,
         ratePerHeadPerDay: row.loan.cycle.penaltyRate.toString(),
         pendingSubmittedAt,
         rejectedWindows,
@@ -155,6 +157,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       asOf: now.toISOString(),
+      kinsenasOpened: kinsenas.opened,
+      kinsenasCreated: kinsenas.createdTotal,
+      kinsenasThrough: kinsenas.through,
       contributionsScanned: contributions.length,
       contributionsUpdated,
       amortizationsScanned: amortizations.length,
@@ -165,7 +170,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: err instanceof Error ? err.message : "Penalty cron failed",
+        error: err instanceof Error ? err.message : "Daily fund cron failed",
       },
       { status: 500 },
     );

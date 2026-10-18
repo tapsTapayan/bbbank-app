@@ -75,6 +75,7 @@ async function syncContributionPenaltyAtSubmit(
     headsCount: contribution.headsSnapshot,
     now: paidAt,
     gracePeriodDays: contribution.cycle.gracePeriodDays ?? GRACE_PERIOD_DAYS,
+    graceDeadline: contribution.graceDeadline,
     ratePerHeadPerDay: contribution.cycle.penaltyRate.toString(),
     pendingSubmittedAt: paidAt,
   });
@@ -118,6 +119,7 @@ async function syncLoanInstallmentPenaltyAtSubmit(
     headsCount: heads,
     now: paidAt,
     gracePeriodDays: installment.loan.cycle.gracePeriodDays ?? GRACE_PERIOD_DAYS,
+    graceDeadline: installment.graceDeadline,
     ratePerHeadPerDay: installment.loan.cycle.penaltyRate.toString(),
     pendingSubmittedAt: paidAt,
   });
@@ -283,14 +285,19 @@ async function applyContributionWaterfall(
   }
 
   const allocationSummary = formatWaterfallPreview(plan).join("\n");
-  await tx.paymentSubmission.update({
+  await tx.paymentSubmission.updateMany({
     where: { id: params.paymentSubmissionId },
-    data: {
-      contributionId: plan.primaryTargetId,
-      loanAmortizationId: null,
-      allocationSummary: allocationSummary || null,
-    },
+    data: { allocationSummary: allocationSummary || null },
   });
+  // Prisma 7 client XOR rejects contributionId on .update(); write FKs via SQL.
+  if (plan.primaryTargetId) {
+    await tx.$executeRaw`
+      UPDATE payment_submissions
+      SET "contributionId" = ${plan.primaryTargetId},
+          "loanAmortizationId" = NULL
+      WHERE id = ${params.paymentSubmissionId}
+    `;
+  }
 
   return { plan, leftover: toMoney(plan.prepaid) };
 }
@@ -483,14 +490,18 @@ async function applyLoanWaterfall(
   }
 
   const allocationSummary = formatWaterfallPreview(plan).join("\n");
-  await tx.paymentSubmission.update({
+  await tx.paymentSubmission.updateMany({
     where: { id: params.paymentSubmissionId },
-    data: {
-      loanAmortizationId: plan.primaryTargetId,
-      contributionId: null,
-      allocationSummary: allocationSummary || null,
-    },
+    data: { allocationSummary: allocationSummary || null },
   });
+  if (plan.primaryTargetId) {
+    await tx.$executeRaw`
+      UPDATE payment_submissions
+      SET "loanAmortizationId" = ${plan.primaryTargetId},
+          "contributionId" = NULL
+      WHERE id = ${params.paymentSubmissionId}
+    `;
+  }
 
   if (!cycleId) {
     const loan = await tx.loan.findUniqueOrThrow({
@@ -594,7 +605,8 @@ export async function verifyPaymentSubmission(
       }
     }
 
-    const result = await prisma.$transaction(async (tx) => {
+    const result = await prisma.$transaction(
+      async (tx) => {
       const pending = await tx.paymentSubmission.findUnique({
         where: { id: submissionId },
         include: {
@@ -727,13 +739,16 @@ export async function verifyPaymentSubmission(
       });
 
       return { status: "VERIFIED" as const };
-    });
+      },
+      { timeout: 30_000 },
+    );
 
     revalidatePath("/verify");
     revalidatePath("/dashboard");
     revalidatePath("/pay");
     revalidatePath("/audit");
     revalidatePath("/loans");
+    revalidatePath("/history");
 
     return ok(
       result,

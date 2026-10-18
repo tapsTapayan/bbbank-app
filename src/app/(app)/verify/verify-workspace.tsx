@@ -52,18 +52,30 @@ export function VerifyWorkspace({
   const [mobilePane, setMobilePane] = useState<"queue" | "receipt" | "decide">(
     "queue",
   );
+  const [queueFilter, setQueueFilter] = useState<"pending" | "done">("pending");
 
   const pendingItems = useMemo(
     () => queue.filter((s) => s.status === "PENDING_VERIFICATION"),
     [queue],
   );
+  const doneItems = useMemo(
+    () =>
+      queue.filter((s) => s.status !== "PENDING_VERIFICATION").sort((a, b) => {
+        const at = a.verifiedAt ? new Date(a.verifiedAt).getTime() : 0;
+        const bt = b.verifiedAt ? new Date(b.verifiedAt).getTime() : 0;
+        return bt - at;
+      }),
+    [queue],
+  );
+  const visibleItems = queueFilter === "pending" ? pendingItems : doneItems;
 
   const selected =
-    queue.find((s) => s.id === selectedId) ?? pendingItems[0] ?? null;
+    visibleItems.find((s) => s.id === selectedId) ?? null;
+  const canDecide = selected?.status === "PENDING_VERIFICATION";
 
   async function selectItem(item: VerifyQueueItem) {
     setSelectedId(item.id);
-    setRemarks("");
+    setRemarks(item.remarks ?? "");
     setCreditedAmount(item.amount.toFixed(2));
     setEditChannel(item.paymentChannel);
     setEditReference(item.referenceNumber);
@@ -94,13 +106,17 @@ export function VerifyWorkspace({
 
   useEffect(() => {
     setQueue(initialQueue);
-    const first = initialQueue[0];
-    if (!first) {
-      setSelectedId("");
-      setReceiptUrl(null);
+    const firstPending = initialQueue.find(
+      (s) => s.status === "PENDING_VERIFICATION",
+    );
+    if (firstPending) {
+      setQueueFilter("pending");
+      void selectItem(firstPending);
       return;
     }
-    void selectItem(first);
+    setSelectedId("");
+    setReceiptUrl(null);
+    setQueueFilter("pending");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialQueue]);
 
@@ -128,7 +144,19 @@ export function VerifyWorkspace({
         return;
       }
 
-      setQueue((prev) => prev.filter((item) => item.id !== selected.id));
+      const decidedAt = new Date().toISOString();
+      setQueue((prev) =>
+        prev.map((item) =>
+          item.id === selected.id
+            ? {
+                ...item,
+                status: decision,
+                verifiedAt: decidedAt,
+                remarks: remarks.trim() || item.remarks,
+              }
+            : item,
+        ),
+      );
       setToast(
         decision === "VERIFIED"
           ? `Verified ${selected.referenceNumber}`
@@ -140,12 +168,44 @@ export function VerifyWorkspace({
       if (next) {
         await selectItem(next);
       } else {
-        setSelectedId("");
-        setReceiptUrl(null);
+        setQueueFilter("done");
+        setSelectedId(selected.id);
       }
 
       router.refresh();
     });
+  }
+
+  function statusLabel(status: VerifyQueueItem["status"]): string {
+    switch (status) {
+      case "PENDING_VERIFICATION":
+        return "Pending";
+      case "VERIFIED":
+        return "Approved";
+      case "REJECTED":
+        return "Rejected";
+      case "AUDITED":
+        return "Audited";
+      case "FLAGGED":
+        return "Flagged";
+      default:
+        return status;
+    }
+  }
+
+  function statusPillClass(status: VerifyQueueItem["status"]): string {
+    switch (status) {
+      case "PENDING_VERIFICATION":
+        return "rl-pill rl-pill-pending";
+      case "VERIFIED":
+      case "AUDITED":
+        return "rl-pill rl-pill-verified";
+      case "REJECTED":
+      case "FLAGGED":
+        return "rl-pill rl-pill-rejected";
+      default:
+        return "rl-pill";
+    }
   }
 
   return (
@@ -162,6 +222,9 @@ export function VerifyWorkspace({
             }
           >
             {pendingItems.length} pending
+          </span>
+          <span className="type-caption font-mono tabular-nums type-muted">
+            {doneItems.length} reviewed
           </span>
           {toast ? (
             <p
@@ -214,16 +277,55 @@ export function VerifyWorkspace({
           <div className="rl-ops-toolbar">
             <p className="type-label">Queue</p>
             <span className="type-caption font-mono tabular-nums">
-              {pendingItems.length} open
+              {visibleItems.length}
             </span>
           </div>
+          <div
+            className="flex gap-1 border-b border-[var(--border-subtle)] px-3 py-2"
+            role="tablist"
+            aria-label="Queue filter"
+          >
+            {(
+              [
+                ["pending", `Pending (${pendingItems.length})`],
+                ["done", `Reviewed (${doneItems.length})`],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={queueFilter === id}
+                className={clsx(
+                  "rl-chip !min-h-8 flex-1 justify-center !px-2 !text-[11px]",
+                  queueFilter === id && "rl-chip-selected",
+                )}
+                onClick={() => {
+                  setQueueFilter(id);
+                  const list = id === "pending" ? pendingItems : doneItems;
+                  const keepInTab = list.some((item) => item.id === selectedId);
+                  if (keepInTab) return;
+                  if (list[0]) {
+                    void selectItem(list[0]);
+                    return;
+                  }
+                  setSelectedId("");
+                  setReceiptUrl(null);
+                }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <ul className="rl-ops-pane-scroll space-y-2 p-3">
-            {pendingItems.length === 0 ? (
+            {visibleItems.length === 0 ? (
               <li className="rl-inset py-12 text-center type-body-sm type-muted">
-                Queue clear
+                {queueFilter === "pending"
+                  ? "Queue clear"
+                  : "No reviewed payments yet"}
               </li>
             ) : null}
-            {pendingItems.map((item) => {
+            {visibleItems.map((item) => {
               const Icon = channelIcon[item.paymentChannel];
               const active = item.id === selected?.id;
               return (
@@ -235,28 +337,41 @@ export function VerifyWorkspace({
                     className={clsx("rl-ops-row", active && "is-selected")}
                   >
                     <div className="flex w-full items-start justify-between gap-2">
-                      <p className="type-body-sm truncate font-semibold">
-                        {item.memberName}
-                      </p>
-                      <span className="font-mono text-sm font-bold shrink-0 tabular-nums text-[var(--ink)]">
-                        {formatPHP(item.amount)}
-                      </span>
+                      <div className="min-w-0">
+                        <p className="type-body-sm truncate font-semibold">
+                          {item.memberName}
+                        </p>
+                        <p className="type-caption mt-0.5 truncate">
+                          {item.targetLabel}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 flex-col items-end gap-1">
+                        <span className="font-mono text-sm font-bold tabular-nums text-[var(--ink)]">
+                          {formatPHP(item.amount)}
+                        </span>
+                        <span
+                          className={clsx(
+                            statusPillClass(item.status),
+                            "!px-1.5 !py-0 !text-[10px] !leading-4",
+                          )}
+                        >
+                          {statusLabel(item.status)}
+                        </span>
+                      </div>
                     </div>
-                    <p className="type-caption truncate">{item.targetLabel}</p>
                     <div className="mt-1.5 flex w-full items-center gap-2 type-caption">
-                      <span className="inline-flex items-center gap-1 rounded bg-[var(--surface-subtle)] px-1.5 py-0.5 font-mono text-[11px] font-semibold text-[var(--ink-secondary)]">
-                        <Icon className="h-3 w-3" aria-hidden />
-                        {item.paymentChannel.replace("_", " ")}
+                      <span className="inline-flex items-center gap-1 whitespace-nowrap rounded bg-[var(--surface-subtle)] px-1.5 py-0.5 font-mono text-[11px] font-semibold text-[var(--ink-secondary)]">
+                        <Icon className="h-3 w-3 shrink-0" aria-hidden />
+                        {item.paymentChannel.replaceAll("_", " ")}
                       </span>
-                      <span className="ml-auto inline-flex items-center gap-1 font-mono text-[11px]">
+                      <span className="ml-auto inline-flex shrink-0 items-center gap-1 whitespace-nowrap font-mono text-[11px]">
                         <Clock className="h-3 w-3" aria-hidden />
-                        {new Date(item.submittedAt).toLocaleTimeString(
-                          "en-PH",
-                          {
-                            hour: "numeric",
-                            minute: "2-digit",
-                          },
-                        )}
+                        {new Date(
+                          item.verifiedAt ?? item.submittedAt,
+                        ).toLocaleTimeString("en-PH", {
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })}
                       </span>
                     </div>
                   </button>
@@ -381,6 +496,33 @@ export function VerifyWorkspace({
                   </div>
                 </dl>
 
+                {!canDecide ? (
+                  <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-subtle)] p-3.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="type-label">Decision</p>
+                      <span className={statusPillClass(selected.status)}>
+                        {statusLabel(selected.status)}
+                      </span>
+                    </div>
+                    {selected.verifiedAt ? (
+                      <p className="type-caption mt-1 font-mono tabular-nums">
+                        {new Date(selected.verifiedAt).toLocaleString("en-PH", {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })}
+                      </p>
+                    ) : null}
+                    {selected.remarks ? (
+                      <p className="type-body-sm mt-2 text-[var(--ink-secondary)]">
+                        {selected.remarks}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 <label className="rl-field" htmlFor="credited-amount">
                   <span className="rl-field-label">Credited Amount (₱)</span>
                   <input
@@ -389,6 +531,7 @@ export function VerifyWorkspace({
                     inputMode="decimal"
                     value={creditedAmount}
                     onChange={(e) => setCreditedAmount(e.target.value)}
+                    disabled={!canDecide}
                     className="rl-input font-mono text-base font-bold tabular-nums"
                   />
                 </label>
@@ -402,6 +545,7 @@ export function VerifyWorkspace({
                       onChange={(e) =>
                         setEditChannel(e.target.value as typeof editChannel)
                       }
+                      disabled={!canDecide}
                       className="rl-select"
                     >
                       <option value="GCASH">GCash</option>
@@ -418,6 +562,7 @@ export function VerifyWorkspace({
                       type="text"
                       value={editReference}
                       onChange={(e) => setEditReference(e.target.value)}
+                      disabled={!canDecide}
                       className="rl-input font-mono text-sm"
                     />
                   </label>
@@ -425,45 +570,50 @@ export function VerifyWorkspace({
 
                 <label className="rl-field" htmlFor="remarks">
                   <span className="rl-field-label">
-                    Remarks (required to reject)
+                    {canDecide
+                      ? "Remarks (required to reject)"
+                      : "Remarks"}
                   </span>
                   <textarea
                     id="remarks"
                     rows={2}
-                    value={remarks}
+                    value={canDecide ? remarks : selected.remarks ?? ""}
                     onChange={(e) => setRemarks(e.target.value)}
+                    disabled={!canDecide}
                     placeholder="Reason for rejection or audit note…"
                     className="rl-textarea"
                   />
                 </label>
               </div>
 
-              <div className="sticky bottom-0 shrink-0 border-t border-[var(--border)] bg-[var(--surface-elevated)] p-4">
-                <div className="grid grid-cols-2 gap-2.5">
-                  <button
-                    type="button"
-                    disabled={pending}
-                    onClick={() => decide("VERIFIED")}
-                    className="rl-btn rl-btn-success rl-btn-block"
-                  >
-                    {pending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                    ) : (
-                      <CheckCircle2 className="h-4 w-4" aria-hidden />
-                    )}
-                    Approve
-                  </button>
-                  <button
-                    type="button"
-                    disabled={pending}
-                    onClick={() => decide("REJECTED")}
-                    className="rl-btn rl-btn-danger rl-btn-block"
-                  >
-                    <XCircle className="h-4 w-4" aria-hidden />
-                    Reject
-                  </button>
+              {canDecide ? (
+                <div className="sticky bottom-0 shrink-0 border-t border-[var(--border)] bg-[var(--surface-elevated)] p-4">
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      disabled={pending}
+                      onClick={() => decide("VERIFIED")}
+                      className="rl-btn rl-btn-success rl-btn-block"
+                    >
+                      {pending ? (
+                        <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                      ) : (
+                        <CheckCircle2 className="h-4 w-4" aria-hidden />
+                      )}
+                      Approve
+                    </button>
+                    <button
+                      type="button"
+                      disabled={pending}
+                      onClick={() => decide("REJECTED")}
+                      className="rl-btn rl-btn-danger rl-btn-block"
+                    >
+                      <XCircle className="h-4 w-4" aria-hidden />
+                      Reject
+                    </button>
+                  </div>
                 </div>
-              </div>
+              ) : null}
             </div>
           ) : (
             <div className="flex flex-1 items-center justify-center p-6 text-center type-body-sm type-muted">
