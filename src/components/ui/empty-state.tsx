@@ -6,7 +6,6 @@ type EmptyStateProps = {
   description?: string;
   action?: React.ReactNode;
   className?: string;
-  /** Ops desk centered empty vs fund-page compact empty */
   variant?: "ops" | "fund";
 };
 
@@ -20,8 +19,8 @@ export function EmptyState({
 }: EmptyStateProps) {
   if (variant === "ops") {
     return (
-      <div className={clsx("ui-ops-empty", className)}>
-        {icon ? <div className="ui-ops-empty-icon">{icon}</div> : null}
+      <div className={clsx("rl-ops-empty", className)}>
+        {icon ? <div className="rl-ops-empty-icon">{icon}</div> : null}
         <p className="type-title">{title}</p>
         {description ? (
           <p className="type-body-sm type-muted mt-1 max-w-sm">{description}</p>

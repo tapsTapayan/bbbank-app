@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -9,10 +9,12 @@ import {
   Upload,
   Camera,
   ChevronDown,
-  ImageIcon,
   AlertTriangle,
-  Check,
-  Lock,
+  CheckCircle2,
+  Sparkles,
+  Banknote,
+  Receipt,
+  CalendarClock,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { submitPaymentProof } from "@/actions/payment-submission";
@@ -78,11 +80,11 @@ function summarizeDues(targets: PaymentTargetOption[]): DuesSummary {
   };
 }
 
-function AttentionBadge() {
+function AttentionBadge({ label = "Verify" }: { label?: string }) {
   return (
-    <span className="ui-attention-badge">
+    <span className="rl-attention-badge">
       <AlertTriangle className="h-2.5 w-2.5" aria-hidden />
-      Review
+      {label}
     </span>
   );
 }
@@ -91,7 +93,7 @@ const CHANNELS = [
   { value: "GCASH", label: "GCash" },
   { value: "MAYA", label: "Maya" },
   { value: "BANK_TRANSFER", label: "Bank" },
-  { value: "OTHER_DIGITAL", label: "Other" },
+  { value: "OTHER_DIGITAL", label: "Other Digital" },
   { value: "CASH", label: "Cash" },
 ] as const;
 
@@ -150,7 +152,7 @@ const payFormSchema = z
       ctx.addIssue({
         code: "custom",
         path: ["referenceNumber"],
-        message: "Reference is required",
+        message: "Reference number is required for digital payments",
       });
     }
   });
@@ -171,7 +173,6 @@ type PayFormProps = {
   monthlyDue: number;
   targets: PaymentTargetOption[];
   kinsenasYearMap?: MemberKinsenasYearMap | null;
-  /** Deep-link from Home / kinsenas map (`?target=`). */
   initialTargetId?: string | null;
   setupHint?: ReactNode;
 };
@@ -230,10 +231,8 @@ export function PayForm({
   } | null>(null);
   const [pending, startTransition] = useTransition();
   const [amountFromOcr, setAmountFromOcr] = useState(false);
-  /** OCR finished (success or fail) — unlock confirm step + attention cues */
   const [ocrSettled, setOcrSettled] = useState(false);
-  const [periodConfirmed, setPeriodConfirmed] = useState(false);
-  const [cashSkip, setCashSkip] = useState(false);
+  const [periodConfirmed, setPeriodConfirmed] = useState(Boolean(initialTargetId));
 
   const dues = summarizeDues(targets);
   const periodMeta = useMemo(() => {
@@ -247,6 +246,7 @@ export function PayForm({
     }
     return meta;
   }, [targets]);
+
   const loanTargets = useMemo(
     () => targets.filter((t) => t.targetType === "LOAN_AMORTIZATION"),
     [targets],
@@ -295,20 +295,7 @@ export function PayForm({
   const aiChannel = watch("aiExtractedChannel");
   const selected = targets.find((t) => t.id === targetId) ?? targets[0];
 
-  const isCash = paymentChannel === "CASH" || cashSkip;
-  const [manualUnlock, setManualUnlock] = useState(false);
-  /** Confirm stays locked while OCR runs; unlock on cash, good scan, or manual. */
-  const receiptProcessed = ocrSettled && !scanning && !scanFailed;
-  const detailsReady = isCash || receiptProcessed || manualUnlock;
-  const step2Ref = useRef<HTMLDivElement>(null);
-  const prevReady = useRef(false);
-
-  useEffect(() => {
-    if (detailsReady && !prevReady.current) {
-      step2Ref.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    }
-    prevReady.current = detailsReady;
-  }, [detailsReady]);
+  const isCash = paymentChannel === "CASH";
 
   function showToast(type: "ok" | "err", message: string) {
     setToast({ type, message });
@@ -323,8 +310,6 @@ export function PayForm({
     setScanFailed(false);
     setAmountFromOcr(false);
     setOcrSettled(false);
-    setPeriodConfirmed(false);
-    setManualUnlock(false);
     setValue("aiExtractedAmount", null);
     setValue("aiExtractedRefNo", null);
     setValue("aiExtractedChannel", null);
@@ -362,8 +347,6 @@ export function PayForm({
 
   async function onReceiptSelected(file: File | null) {
     clearReceipt();
-    setCashSkip(false);
-    setManualUnlock(false);
     if (!file) return;
 
     setPreviewUrl(URL.createObjectURL(file));
@@ -425,7 +408,6 @@ export function PayForm({
         setValue("paymentChannel", ocr.paymentChannel, {
           shouldValidate: true,
         });
-        if (ocr.paymentChannel === "CASH") setCashSkip(true);
       }
     } catch (err) {
       setScanFailed(true);
@@ -434,12 +416,11 @@ export function PayForm({
         "aiConfidenceNote",
         err instanceof Error
           ? err.message
-          : "Couldn’t read the image — fill amount and reference below.",
+          : "Couldn’t read the receipt automatically — verify fields below.",
       );
     } finally {
       setScanning(false);
       setOcrSettled(true);
-      setPeriodConfirmed(false);
     }
   }
 
@@ -453,9 +434,7 @@ export function PayForm({
   }
 
   function attentionFor(field: AttentionField): boolean {
-    if (!detailsReady) return false;
-    if (!isCash && !ocrSettled) return false;
-
+    if (!ocrSettled) return false;
     switch (field) {
       case "period":
         return !periodConfirmed;
@@ -478,9 +457,9 @@ export function PayForm({
       showToast("err", "No open period to pay.");
       return;
     }
-    const isCash = values.paymentChannel === "CASH";
-    if (!isCash && !compressedFile) {
-      showToast("err", "Attach a receipt image for digital payments.");
+    const payingCash = values.paymentChannel === "CASH";
+    if (!payingCash && !compressedFile) {
+      showToast("err", "Please attach a receipt image for digital payments.");
       return;
     }
 
@@ -518,7 +497,7 @@ export function PayForm({
           return;
         }
 
-        showToast("ok", result.message ?? "Submitted for verification.");
+        showToast("ok", result.message ?? "Payment submitted for verification.");
         form.reset({
           targetId: defaultTargetId,
           amount:
@@ -531,7 +510,6 @@ export function PayForm({
           aiExtractedChannel: null,
           aiConfidenceNote: null,
         });
-        setCashSkip(false);
         clearReceipt();
       } catch (err) {
         showToast(
@@ -544,60 +522,51 @@ export function PayForm({
 
   const canSubmit =
     targets.length > 0 &&
-    detailsReady &&
     !scanning &&
     !pending &&
     Boolean(paidAt) &&
     (isCash || Boolean(compressedFile));
+
   const targetGroups = groupTargets(targets);
   const hasLateFee = selected ? Number(selected.penaltyAmount) > 0 : false;
-  const attentionCount = (
-    ["period", "amount", "channel", "paidAt", "reference"] as AttentionField[]
-  ).filter((f) => attentionFor(f)).length;
-
-  const scanStatus = scanning
-    ? "Reading receipt…"
-    : scanFailed
-      ? "Couldn’t read receipt — fill details below."
-      : isValidReceipt === false
-        ? "This may not be a payment receipt."
-        : confidenceNote
-          ? confidenceNote
-          : null;
-
   const useMapPicker = Boolean(kinsenasYearMap);
+
   const selectedTitle = selected
     ? selected.targetType === "CONTRIBUTION"
-      ? selected.kinsenaIndex === 1
-        ? "1st kinsenas · 15th"
-        : "2nd kinsenas · EOM"
-      : "Loan installment"
-    : "Select a period";
+      ? `${selected.label} · ${selected.kinsenaIndex === 1 ? "15th Kinsenas" : "EOM Kinsenas"}`
+      : selected.label
+    : "Select an obligation";
 
   return (
     <form
       onSubmit={handleSubmit(onSubmit)}
-      className="ui-fund-frame ui-pay-page"
+      className="rl-fund-frame rl-pay-page"
       noValidate
     >
       <PageHeader
-        eyebrow="Pay"
-        title="Cover a period"
-        description={`${headsCount} head${headsCount === 1 ? "" : "s"} · ${formatPHP(kinsenasDue)} / kinsenas · ${formatPHP(monthlyDue)} / month`}
+        eyebrow="Payment Desk"
+        title="Submit Contribution or Loan Payment"
+        description={`${headsCount} active head${headsCount === 1 ? "" : "s"} · ${formatPHP(kinsenasDue)} per kinsenas · ${formatPHP(monthlyDue)} per month`}
       />
 
       {targets.length === 0 ? (
-        <div className="ui-pay-empty">
-          <p className="type-title">Nothing open to pay</p>
+        <div className="rl-panel mx-auto max-w-lg py-12 text-center">
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-[var(--radius-card)] bg-[var(--success-soft)] text-[var(--success)]">
+            <CheckCircle2 className="h-6 w-6" aria-hidden />
+          </div>
+          <p className="type-title">All Open Obligations Settled</p>
+          <p className="type-body-sm type-muted mt-1">
+            There are no open kinsenas periods or loan installments awaiting payment.
+          </p>
           {setupHint ? (
-            <div className="type-body-sm type-muted mt-2">{setupHint}</div>
+            <div className="type-body-sm type-muted mt-3">{setupHint}</div>
           ) : null}
           {toast ? (
             <p
               className={
                 toast.type === "ok"
-                  ? "ui-alert ui-alert-ok mt-4"
-                  : "ui-alert ui-alert-error mt-4"
+                  ? "rl-alert rl-alert-ok mt-4 justify-center"
+                  : "rl-alert rl-alert-error mt-4 justify-center"
               }
               role="status"
               aria-live="polite"
@@ -607,23 +576,24 @@ export function PayForm({
           ) : null}
         </div>
       ) : (
-        <div
-          className={`ui-desk ui-pay-shell${dues.overdueCount > 0 ? " ui-pay-shell--overdue" : ""}`}
-        >
-          <aside className="ui-pay-rail" aria-label="Open periods">
-            <div className="ui-pay-rail-dues">
-              <p className="type-caption">Total dues</p>
-              <p className="ui-pay-rail-total">
-                <Money amount={dues.totalDues} />
+        <div className="rl-pay-grid">
+          {/* Left Rail: Total Open Dues + Interactive Obligation Selector */}
+          <aside className="rl-pay-rail" aria-label="Open obligations">
+            <div className="rounded-[var(--radius-md)] bg-[var(--surface-subtle)] p-4 ring-1 ring-[var(--border-subtle)]">
+              <div className="flex items-center justify-between gap-2">
+                <p className="type-label">Total Open Dues</p>
+                <span className="rl-pill rl-pill-audited">
+                  {dues.openCount} Open
+                </span>
+              </div>
+              <p className="type-metric mt-2">
+                <Money amount={dues.totalDues} metric />
               </p>
-              <p className="type-caption mt-1.5 tabular-nums">
-                {dues.openCount} open
+              <p className="type-caption mt-1 font-mono tabular-nums">
+                {formatPHP(dues.baseTotal)} base
                 {dues.penaltyTotal > 0
-                  ? ` · ${formatPHP(dues.penaltyTotal)} late`
-                  : ""}
-                {dues.overdueCount > 0
-                  ? ` · ${dues.overdueCount} overdue`
-                  : ""}
+                  ? ` + ${formatPHP(dues.penaltyTotal)} late (${dues.overdueCount} overdue)`
+                  : " · No late fees"}
               </p>
             </div>
 
@@ -636,16 +606,16 @@ export function PayForm({
                 periodMeta={periodMeta}
               />
             ) : (
-              <div className="ui-pay-rail-list">
-                <p className="type-label">Choose a period</p>
-                <ul className="km-period-list mt-3">
+              <div className="rl-stack-sm">
+                <p className="type-label">Select Period</p>
+                <ul className="km-period-list">
                   {targets.map((t) => {
                     const selectedRow = t.id === targetId;
                     return (
                       <li key={t.id}>
                         <button
                           type="button"
-                          className={`km-period-row${selectedRow ? " is-selected" : ""}${t.isOverdue ? " km-period-row--overdue" : ""}`}
+                          className={`km-period-row${selectedRow ? " is-selected" : ""}`}
                           aria-pressed={selectedRow}
                           onClick={() => onTargetChange(t.id)}
                         >
@@ -662,7 +632,7 @@ export function PayForm({
                                 ? "Overdue"
                                 : t.isAdvance
                                   ? "Advance"
-                                  : "Open"}
+                                  : "Due"}
                             </span>
                           </span>
                           <span className="km-period-amount">
@@ -677,16 +647,16 @@ export function PayForm({
             )}
 
             {useMapPicker && loanTargets.length > 0 ? (
-              <div className="ui-pay-rail-loans">
-                <p className="type-label">Loan installments</p>
-                <ul className="km-period-list mt-2">
+              <div className="border-t border-[var(--border-subtle)] pt-4">
+                <p className="type-label mb-2.5">Loan Installments</p>
+                <ul className="km-period-list">
                   {loanTargets.map((t) => {
                     const selectedRow = t.id === targetId;
                     return (
                       <li key={t.id}>
                         <button
                           type="button"
-                          className={`km-period-row${selectedRow ? " is-selected" : ""}${t.isOverdue ? " km-period-row--overdue" : ""}`}
+                          className={`km-period-row${selectedRow ? " is-selected" : ""}`}
                           aria-pressed={selectedRow}
                           onClick={() => onTargetChange(t.id)}
                         >
@@ -697,7 +667,7 @@ export function PayForm({
                           <span className="km-period-main">
                             <span className="km-period-date">{t.label}</span>
                             <span className="km-period-status km-period-status--due">
-                              Loan
+                              Loan Amortization
                             </span>
                           </span>
                           <span className="km-period-amount">
@@ -711,7 +681,7 @@ export function PayForm({
               </div>
             ) : null}
 
-            {/* Keep RHF targetId wired; rail buttons drive changes */}
+            {/* Hidden RHF select for form validation */}
             <select
               {...register("targetId")}
               className="sr-only"
@@ -730,140 +700,236 @@ export function PayForm({
               ))}
             </select>
             {errors.targetId ? (
-              <p className="type-caption mt-2 text-[var(--danger)]" role="alert">
+              <p className="type-caption text-[var(--danger)]" role="alert">
                 {errors.targetId.message}
               </p>
             ) : null}
           </aside>
 
-          <div className="ui-pay-work">
-            <header className="ui-pay-context">
-              <div className="min-w-0">
-                <p className="type-caption">Paying</p>
-                <p className="ui-pay-context-title">
-                  {selectedTitle}
-                  {selected?.isOverdue ? (
-                    <span className="ui-pay-context-flag">Overdue</span>
-                  ) : null}
-                  {attentionFor("period") ? <AttentionBadge /> : null}
-                </p>
-                {selected ? (
-                  <p className="type-caption mt-1 tabular-nums">
-                    Due {formatUtcDate(selected.dueDate)}
-                    {hasLateFee
-                      ? ` · ${formatPHP(selected.baseRemaining)} + ${formatPHP(selected.penaltyAmount)} late`
-                      : ` · ${formatPHP(selected.suggestedAmount)}`}
-                  </p>
-                ) : null}
-              </div>
-              <ol className="ui-pay-steps" aria-label="Payment progress">
-                <li
-                  className={`ui-pay-steps-item${detailsReady ? " is-done" : " is-current"}`}
-                >
-                  <span className="ui-pay-steps-mark" aria-hidden>
-                    {detailsReady ? <Check className="h-3 w-3" /> : "1"}
-                  </span>
-                  {cashSkip ? "Cash" : "Proof"}
-                </li>
-                <li
-                  className={`ui-pay-steps-item${detailsReady ? " is-current" : " is-locked"}`}
-                >
-                  <span className="ui-pay-steps-mark" aria-hidden>
-                    {detailsReady ? "2" : <Lock className="h-2.5 w-2.5" />}
-                  </span>
-                  Confirm
-                </li>
-              </ol>
-            </header>
+          {/* Right Continuous Workstation: Obligation Summary + AI Receipt Scanner + Payment Details */}
+          <div className="rl-pay-work">
+            {/* 1. Selected Obligation Context & Quick Presets */}
+            {selected ? (
+              <section
+                className="rl-panel rl-stack"
+                aria-labelledby="selected-target-heading"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--border-subtle)] pb-4">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="type-label" id="selected-target-heading">
+                        Active Obligation Target
+                      </p>
+                      {selected.isOverdue ? (
+                        <span className="rl-pill rl-pill-rejected">Overdue</span>
+                      ) : selected.isAdvance ? (
+                        <span className="rl-pill rl-pill-audited">Advance</span>
+                      ) : (
+                        <span className="rl-pill rl-pill-verified">Open</span>
+                      )}
+                      {attentionFor("period") ? (
+                        <AttentionBadge label="Confirm target" />
+                      ) : null}
+                    </div>
+                    <h2 className="type-heading mt-1">{selectedTitle}</h2>
+                    <p className="type-caption mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono tabular-nums">
+                      <span>Due {formatUtcDate(selected.dueDate)}</span>
+                      <span>·</span>
+                      <span>Grace ends {formatUtcDate(selected.graceDeadline)}</span>
+                    </p>
+                  </div>
 
+                  <div className="text-left sm:text-right">
+                    <p className="type-label">Suggested Amount</p>
+                    <p className="type-metric mt-1">
+                      {formatPHP(selected.suggestedAmount)}
+                    </p>
+                    {hasLateFee ? (
+                      <p className="type-caption mt-0.5 font-mono text-[var(--warning)] tabular-nums">
+                        {formatPHP(selected.baseRemaining)} base +{" "}
+                        {formatPHP(selected.penaltyAmount)} late
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+
+                {/* Quick Amount Presets */}
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="type-caption font-medium">
+                      Quick fill:
+                    </span>
+                    <button
+                      type="button"
+                      className={`rl-chip ${
+                        amount === selected.suggestedAmount
+                          ? "rl-chip-selected"
+                          : ""
+                      }`}
+                      onClick={() => applyAmountPreset(selected.suggestedAmount)}
+                    >
+                      {hasLateFee ? "Period + Late Fee" : "Full Period Due"} (
+                      {formatPHP(selected.suggestedAmount)})
+                    </button>
+                    {hasLateFee ? (
+                      <button
+                        type="button"
+                        className={`rl-chip ${
+                          amount === selected.baseRemaining
+                            ? "rl-chip-selected"
+                            : ""
+                        }`}
+                        onClick={() => applyAmountPreset(selected.baseRemaining)}
+                      >
+                        Base Only ({formatPHP(selected.baseRemaining)})
+                      </button>
+                    ) : null}
+                    {selected.targetType === "CONTRIBUTION" &&
+                    selected.monthlyTotalSuggestedAmount !==
+                      selected.suggestedAmount ? (
+                      <button
+                        type="button"
+                        className={`rl-chip ${
+                          amount === selected.monthlyTotalSuggestedAmount
+                            ? "rl-chip-selected"
+                            : ""
+                        }`}
+                        onClick={() =>
+                          applyAmountPreset(selected.monthlyTotalSuggestedAmount)
+                        }
+                      >
+                        Full Month ({formatPHP(selected.monthlyTotalSuggestedAmount)})
+                      </button>
+                    ) : null}
+                  </div>
+
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--brand)] hover:underline"
+                    aria-expanded={detailsOpen}
+                    onClick={() => setDetailsOpen((o) => !o)}
+                  >
+                    <CalendarClock className="h-3.5 w-3.5" aria-hidden />
+                    <span>CPE Rule #3 Breakdown</span>
+                    <ChevronDown
+                      className={`h-3.5 w-3.5 transition-transform duration-200 ${
+                        detailsOpen ? "rotate-180" : ""
+                      }`}
+                      aria-hidden
+                    />
+                  </button>
+                </div>
+
+                {detailsOpen ? (
+                  <div className="rl-inset space-y-1.5">
+                    <p className="type-caption font-medium text-[var(--ink)]">
+                      Policy Due: {formatUtcDate(selected.dueDate)} · 2-Day Grace Ends:{" "}
+                      {formatUtcDate(selected.graceDeadline)}
+                    </p>
+                    <p className="type-caption">{selected.lateFeeBreakdown}</p>
+                    {hasLateFee ? (
+                      <p className="font-mono text-xs font-semibold text-[var(--warning)] tabular-nums">
+                        Formula: {selected.daysDelayed} chargeable day
+                        {selected.daysDelayed === 1 ? "" : "s"} × ₱
+                        {selected.penaltyRatePerHeadPerDay}/head/day ×{" "}
+                        {selected.headsSnapshot} head
+                        {selected.headsSnapshot === 1 ? "" : "s"} ={" "}
+                        {formatPHP(selected.penaltyAmount)}
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
+
+            {/* 2. Smart Receipt Proof & AI OCR Scanner */}
             <section
-              className={`ui-pay-panel${
-                detailsReady
-                  ? " is-complete"
-                  : scanning
-                    ? " is-scanning"
-                    : " is-active"
-              }`}
+              className="rl-panel rl-stack"
               aria-labelledby="pay-proof-heading"
               aria-busy={scanning || undefined}
             >
-              <div className="ui-pay-panel-head">
-                <h2 id="pay-proof-heading" className="type-body-sm font-semibold">
-                  {cashSkip ? "Cash payment" : "Receipt proof"}
-                </h2>
-                {!cashSkip ? (
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <Receipt
+                    className="h-4 w-4 text-[var(--brand)]"
+                    aria-hidden
+                  />
+                  <h2 id="pay-proof-heading" className="type-title">
+                    {isCash ? "Cash Payment Attestation" : "1. Receipt Proof & AI Auto-Fill"}
+                  </h2>
+                </div>
+                {!isCash ? (
                   <button
                     type="button"
-                    className="ui-btn ui-btn-ghost h-10 px-3 text-[13px]"
+                    className="rl-btn rl-btn-ghost rl-btn-sm"
                     onClick={() => {
-                      setCashSkip(true);
                       setValue("paymentChannel", "CASH", {
                         shouldValidate: true,
                       });
                       setOcrSettled(false);
-                      setPeriodConfirmed(false);
                     }}
                   >
-                    Pay with cash
+                    <Banknote className="h-3.5 w-3.5" aria-hidden />
+                    Paying in cash instead?
                   </button>
                 ) : (
                   <button
                     type="button"
-                    className="ui-btn ui-btn-ghost h-10 px-3 text-[13px]"
+                    className="rl-btn rl-btn-soft rl-btn-sm"
                     onClick={() => {
-                      setCashSkip(false);
                       setValue("paymentChannel", "GCASH", {
                         shouldValidate: true,
                       });
                       clearReceipt();
                     }}
                   >
-                    Use receipt
+                    <Receipt className="h-3.5 w-3.5" aria-hidden />
+                    Switch to digital receipt
                   </button>
                 )}
               </div>
 
               {previewUrl ? (
-                <div
-                  className={`ui-pay-dropzone ui-pay-dropzone--preview${
-                    detailsReady ? " ui-pay-dropzone--compact-preview" : ""
-                  }${scanning ? " is-scanning" : ""}`}
-                >
+                <div className="rl-pay-dropzone rl-pay-dropzone--preview">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={previewUrl}
-                    alt="Selected payment proof"
-                    className="ui-pay-receipt-img"
+                    alt="Selected payment receipt proof"
+                    className="rl-pay-receipt-img"
                   />
                   {scanning ? (
-                    <div className="ui-pay-scan-overlay" aria-live="polite">
+                    <div className="rl-pay-scan-overlay" aria-live="polite">
                       <Loader2
-                        className="h-5 w-5 animate-spin"
+                        className="h-6 w-6 animate-spin"
                         aria-hidden
                       />
-                      <span>Reading receipt…</span>
+                      <span>Scanning receipt with AI OCR…</span>
                     </div>
                   ) : null}
                   <button
                     type="button"
-                    className="ui-pay-receipt-change"
+                    className="rl-pay-receipt-change"
                     onClick={() => clearReceipt()}
                     disabled={scanning}
                   >
-                    Change
+                    Replace image
                   </button>
                 </div>
               ) : (
-                <label
-                  className={`ui-pay-dropzone${cashSkip ? " ui-pay-dropzone--compact" : ""}`}
-                >
-                  <Camera className="h-7 w-7 text-[var(--brand)]" aria-hidden />
-                  <span className="type-body-sm font-medium text-[var(--brand)]">
-                    {cashSkip ? "Optional photo" : "Add receipt photo"}
+                <label className="rl-pay-dropzone">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--brand-soft)] text-[var(--brand)]">
+                    <Camera className="h-5 w-5" aria-hidden />
+                  </div>
+                  <span className="type-body-sm font-semibold text-[var(--brand)]">
+                    {isCash
+                      ? "Attach optional cash acknowledgment photo"
+                      : "Upload or capture payment receipt"}
                   </span>
-                  {!cashSkip ? (
-                    <span className="type-caption">Confirm unlocks after scan</span>
-                  ) : null}
+                  <span className="type-caption max-w-sm">
+                    {isCash
+                      ? "Cash payments do not require a receipt image, but you may attach one for your records."
+                      : "Supports GCash, Maya, and Bank Transfer screenshots. AI will automatically extract amount, date, and reference."}
+                  </span>
                   <input
                     type="file"
                     accept="image/*"
@@ -876,12 +942,14 @@ export function PayForm({
                 </label>
               )}
 
-              {scanStatus && !cashSkip ? (
-                <p
-                  className={`ui-pay-scan${
-                    scanFailed || isValidReceipt === false
-                      ? " ui-pay-scan--warn"
-                      : ""
+              {!isCash && (scanning || scanFailed || isValidReceipt !== null || confidenceNote) ? (
+                <div
+                  className={`rl-alert ${
+                    scanning
+                      ? "rl-alert-info"
+                      : scanFailed || isValidReceipt === false
+                        ? "rl-alert-warn"
+                        : "rl-alert-ok"
                   }`}
                   role="status"
                 >
@@ -890,336 +958,210 @@ export function PayForm({
                       className="mt-0.5 h-4 w-4 shrink-0 animate-spin"
                       aria-hidden
                     />
+                  ) : scanFailed || isValidReceipt === false ? (
+                    <AlertTriangle
+                      className="mt-0.5 h-4 w-4 shrink-0"
+                      aria-hidden
+                    />
                   ) : (
-                    <ImageIcon className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+                    <Sparkles className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
                   )}
-                  <span>{scanStatus}</span>
-                </p>
+                  <span className="text-xs font-medium">
+                    {scanning
+                      ? "Extracting amount, reference number, and date from receipt…"
+                      : scanFailed
+                        ? "Couldn’t auto-read receipt — please verify the fields below."
+                        : isValidReceipt === false
+                          ? "Image may not be a standard payment receipt — please verify details below."
+                          : confidenceNote ?? "Receipt details extracted. Please review before submitting."}
+                  </span>
+                </div>
               ) : null}
             </section>
 
-            {detailsReady ? (
-              <section
-                ref={step2Ref}
-                className="ui-pay-panel is-active"
-                id="pay-step-2"
-                aria-labelledby="pay-details-heading"
-              >
-                <div className="ui-pay-panel-head">
-                  <h2
-                    id="pay-details-heading"
-                    className="type-body-sm font-semibold"
-                  >
-                    Confirm details
-                    {attentionCount > 0 ? (
-                      <span className="type-caption ml-2 font-normal text-[var(--warning)]">
-                        {attentionCount} to review
-                      </span>
-                    ) : null}
-                  </h2>
-                </div>
-
-                {selected ? (
-                  <div className="ui-pay-amount-block">
-                    <p className="ui-pay-amount-due">
-                      {formatPHP(selected.suggestedAmount)}
-                    </p>
-                    <p className="type-caption tabular-nums">Suggested</p>
-
-                    <div className="ui-pay-presets">
-                      <button
-                        type="button"
-                        className={`ui-btn h-10 px-3 text-[13px]${
-                          amount === selected.baseRemaining
-                            ? " ui-btn-primary"
-                            : " ui-btn-ghost"
-                        }`}
-                        onClick={() =>
-                          applyAmountPreset(selected.baseRemaining)
-                        }
-                      >
-                        Base only
-                      </button>
-                      {hasLateFee ? (
-                        <button
-                          type="button"
-                          className={`ui-btn h-10 px-3 text-[13px]${
-                            amount === selected.suggestedAmount
-                              ? " ui-btn-primary"
-                              : " ui-btn-ghost"
-                          }`}
-                          onClick={() =>
-                            applyAmountPreset(selected.suggestedAmount)
-                          }
-                        >
-                          Period + late
-                        </button>
-                      ) : null}
-                      {selected.targetType === "CONTRIBUTION" &&
-                      selected.monthlyTotalSuggestedAmount !==
-                        selected.suggestedAmount ? (
-                        <button
-                          type="button"
-                          className={`ui-btn h-10 px-3 text-[13px]${
-                            amount === selected.monthlyTotalSuggestedAmount
-                              ? " ui-btn-primary"
-                              : " ui-btn-ghost"
-                          }`}
-                          onClick={() =>
-                            applyAmountPreset(
-                              selected.monthlyTotalSuggestedAmount,
-                            )
-                          }
-                        >
-                          Full month
-                        </button>
-                      ) : null}
-                    </div>
-
-                    <label
-                      className={`ui-field mt-4${
-                        attentionFor("amount") ? " ui-field-attention" : ""
-                      }`}
-                    >
-                      <span className="ui-field-label">
-                        You are paying
-                        {attentionFor("amount") ? <AttentionBadge /> : null}
-                      </span>
-                      <div className="relative">
-                        <span
-                          className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 type-body-sm text-[var(--ink-muted)]"
-                          aria-hidden
-                        >
-                          ₱
-                        </span>
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          {...register("amount")}
-                          className="ui-input pl-8 tabular-nums text-lg font-semibold"
-                        />
-                      </div>
-                      {errors.amount ? (
-                        <span
-                          className="type-caption text-[var(--danger)]"
-                          role="alert"
-                        >
-                          {errors.amount.message}
-                        </span>
-                      ) : null}
-                    </label>
-
-                    <button
-                      type="button"
-                      className="ui-pay-fee-toggle"
-                      aria-expanded={detailsOpen}
-                      onClick={() => setDetailsOpen((o) => !o)}
-                    >
-                      <span>Late fee details</span>
-                      <ChevronDown
-                        className={`h-4 w-4 shrink-0 transition-transform duration-200${
-                          detailsOpen ? " rotate-180" : ""
-                        }`}
-                        aria-hidden
-                      />
-                    </button>
-                    {detailsOpen ? (
-                      <div className="ui-pay-fee-body">
-                        <p className="type-caption">
-                          Policy due {formatUtcDate(selected.dueDate)} · Grace
-                          ends {formatUtcDate(selected.graceDeadline)}
-                        </p>
-                        <p className="type-caption">
-                          {selected.lateFeeBreakdown}
-                        </p>
-                        {hasLateFee ? (
-                          <p className="type-body-sm tabular-nums">
-                            Late fee: {formatPHP(selected.penaltyAmount)} (
-                            {selected.daysDelayed} chargeable day
-                            {selected.daysDelayed === 1 ? "" : "s"} × ₱
-                            {selected.penaltyRatePerHeadPerDay}/head ×{" "}
-                            {selected.headsSnapshot} head
-                            {selected.headsSnapshot === 1 ? "" : "s"})
-                          </p>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </div>
-                ) : null}
-
-                <div className="ui-pay-fields">
-                  <fieldset
-                    className={
-                      attentionFor("channel") ? "ui-field-attention" : undefined
-                    }
-                  >
-                    <legend className="ui-field-label">
-                      Channel
-                      {attentionFor("channel") ? <AttentionBadge /> : null}
-                    </legend>
-                    <div
-                      className="ui-pay-channels"
-                      role="radiogroup"
-                      aria-label="Payment channel"
-                    >
-                      {CHANNELS.map((c) => {
-                        const active = paymentChannel === c.value;
-                        return (
-                          <button
-                            key={c.value}
-                            type="button"
-                            role="radio"
-                            aria-checked={active}
-                            className={`ui-btn h-10 px-2 text-[13px]${
-                              active ? " ui-btn-primary" : " ui-btn-ghost"
-                            }`}
-                            onClick={() => {
-                              setValue("paymentChannel", c.value, {
-                                shouldValidate: true,
-                              });
-                              setCashSkip(c.value === "CASH");
-                              if (c.value !== "CASH") {
-                                setValue("aiExtractedChannel", c.value);
-                              }
-                            }}
-                          >
-                            {c.label}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </fieldset>
-
-                  <div className="ui-pay-field-row">
-                    <label
-                      className={`ui-field${
-                        attentionFor("paidAt") ? " ui-field-attention" : ""
-                      }`}
-                    >
-                      <span className="ui-field-label">
-                        Payment date
-                        {attentionFor("paidAt") ? <AttentionBadge /> : null}
-                      </span>
-                      <input
-                        type="date"
-                        max={todayLocalIsoDate()}
-                        {...register("paidAt")}
-                        className="ui-input"
-                      />
-                      {errors.paidAt ? (
-                        <span
-                          className="type-caption text-[var(--danger)]"
-                          role="alert"
-                        >
-                          {errors.paidAt.message}
-                        </span>
-                      ) : null}
-                    </label>
-
-                    {paymentChannel === "CASH" ? (
-                      <input type="hidden" {...register("referenceNumber")} />
-                    ) : (
-                      <label
-                        className={`ui-field${
-                          attentionFor("reference")
-                            ? " ui-field-attention"
-                            : ""
-                        }`}
-                      >
-                        <span className="ui-field-label">
-                          Reference
-                          {attentionFor("reference") ? (
-                            <AttentionBadge />
-                          ) : null}
-                        </span>
-                        <input
-                          type="text"
-                          {...register("referenceNumber")}
-                          placeholder="From receipt"
-                          autoComplete="off"
-                          className="ui-input font-mono"
-                        />
-                        {errors.referenceNumber ? (
-                          <span
-                            className="type-caption text-[var(--danger)]"
-                            role="alert"
-                          >
-                            {errors.referenceNumber.message}
-                          </span>
-                        ) : null}
-                      </label>
-                    )}
-                  </div>
-                </div>
-
-                <input type="hidden" {...register("aiExtractedAmount")} />
-                <input type="hidden" {...register("aiExtractedRefNo")} />
-                <input type="hidden" {...register("aiExtractedChannel")} />
-                <input type="hidden" {...register("aiConfidenceNote")} />
-
-                {toast ? (
-                  <p
-                    className={
-                      toast.type === "ok"
-                        ? "ui-alert ui-alert-ok mt-4"
-                        : "ui-alert ui-alert-error mt-4"
-                    }
-                    role="status"
-                    aria-live="polite"
-                  >
-                    {toast.message}
-                  </p>
-                ) : null}
-
-                <div className="ui-pay-cta">
-                  <button
-                    type="submit"
-                    disabled={!canSubmit}
-                    className="ui-btn ui-btn-primary ui-btn-lg ui-btn-block cursor-pointer shadow-[var(--shadow-elevated)] disabled:cursor-not-allowed"
-                  >
-                    {pending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                    ) : (
-                      <Upload className="h-4 w-4" aria-hidden />
-                    )}
-                    {pending ? "Submitting…" : "Submit payment"}
-                  </button>
-                </div>
-              </section>
-            ) : (
-              <div
-                ref={step2Ref}
-                className="ui-pay-await"
-                id="pay-step-2"
-                aria-labelledby="pay-step-2-locked"
-              >
-                <Lock
-                  className="h-4 w-4 shrink-0 text-[var(--ink-muted)]"
-                  aria-hidden
-                />
-                <div className="min-w-0 flex-1">
-                  <p
-                    id="pay-step-2-locked"
-                    className="type-body-sm font-medium text-[var(--ink-muted)]"
-                  >
-                    {scanning
-                      ? "Reading receipt — confirm unlocks when done"
-                      : scanFailed
-                        ? "Couldn’t read receipt — enter details manually"
-                        : "Add a receipt or pay with cash to confirm"}
-                  </p>
-                </div>
-                {!scanning ? (
-                  <button
-                    type="button"
-                    className="ui-btn ui-btn-ghost h-10 shrink-0 px-3 text-[13px]"
-                    onClick={() => setManualUnlock(true)}
-                  >
-                    Enter manually
-                  </button>
-                ) : null}
+            {/* 3. Payment Confirmation Form (Always Accessible) */}
+            <section
+              className="rl-panel rl-stack"
+              aria-labelledby="pay-details-heading"
+            >
+              <div className="border-b border-[var(--border-subtle)] pb-3">
+                <h2 id="pay-details-heading" className="type-title">
+                  {isCash ? "Confirm Cash Payment Details" : "2. Verify & Submit Payment Details"}
+                </h2>
+                <p className="type-caption mt-0.5">
+                  Ensure the amount, payment channel, date, and reference number match your transaction.
+                </p>
               </div>
-            )}
+
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label
+                  className={`rl-field sm:col-span-2 ${
+                    attentionFor("amount") ? "rl-field-attention" : ""
+                  }`}
+                >
+                  <span className="rl-field-label">
+                    Amount Paid (PHP)
+                    {attentionFor("amount") ? <AttentionBadge /> : null}
+                  </span>
+                  <div className="relative">
+                    <span
+                      className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 font-mono text-base font-bold text-[var(--ink-muted)]"
+                      aria-hidden
+                    >
+                      ₱
+                    </span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      {...register("amount")}
+                      className="rl-input pl-8 font-mono text-lg font-bold tabular-nums"
+                    />
+                  </div>
+                  {errors.amount ? (
+                    <span
+                      className="type-caption text-[var(--danger)]"
+                      role="alert"
+                    >
+                      {errors.amount.message}
+                    </span>
+                  ) : null}
+                </label>
+
+                <fieldset
+                  className={`rl-field sm:col-span-2 ${
+                    attentionFor("channel") ? "rl-field-attention" : ""
+                  }`}
+                >
+                  <legend className="rl-field-label mb-1.5">
+                    Payment Channel
+                    {attentionFor("channel") ? <AttentionBadge /> : null}
+                  </legend>
+                  <div
+                    className="grid grid-cols-2 gap-2 sm:grid-cols-5"
+                    role="radiogroup"
+                    aria-label="Payment channel"
+                  >
+                    {CHANNELS.map((c) => {
+                      const active = paymentChannel === c.value;
+                      return (
+                        <button
+                          key={c.value}
+                          type="button"
+                          role="radio"
+                          aria-checked={active}
+                          className={`rl-chip ${
+                            active ? "rl-chip-selected" : ""
+                          }`}
+                          onClick={() => {
+                            setValue("paymentChannel", c.value, {
+                              shouldValidate: true,
+                            });
+                            if (c.value !== "CASH") {
+                              setValue("aiExtractedChannel", c.value);
+                            }
+                          }}
+                        >
+                          {c.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </fieldset>
+
+                <label
+                  className={`rl-field ${
+                    attentionFor("paidAt") ? "rl-field-attention" : ""
+                  }`}
+                >
+                  <span className="rl-field-label">
+                    Transaction Date
+                    {attentionFor("paidAt") ? <AttentionBadge /> : null}
+                  </span>
+                  <input
+                    type="date"
+                    max={todayLocalIsoDate()}
+                    {...register("paidAt")}
+                    className="rl-input font-mono"
+                  />
+                  {errors.paidAt ? (
+                    <span
+                      className="type-caption text-[var(--danger)]"
+                      role="alert"
+                    >
+                      {errors.paidAt.message}
+                    </span>
+                  ) : null}
+                </label>
+
+                {paymentChannel === "CASH" ? (
+                  <input type="hidden" {...register("referenceNumber")} />
+                ) : (
+                  <label
+                    className={`rl-field ${
+                      attentionFor("reference") ? "rl-field-attention" : ""
+                    }`}
+                  >
+                    <span className="rl-field-label">
+                      Reference Number
+                      {attentionFor("reference") ? <AttentionBadge /> : null}
+                    </span>
+                    <input
+                      type="text"
+                      {...register("referenceNumber")}
+                      placeholder="e.g. 901234567890"
+                      autoComplete="off"
+                      className="rl-input font-mono"
+                    />
+                    {errors.referenceNumber ? (
+                      <span
+                        className="type-caption text-[var(--danger)]"
+                        role="alert"
+                      >
+                        {errors.referenceNumber.message}
+                      </span>
+                    ) : null}
+                  </label>
+                )}
+              </div>
+
+              <input type="hidden" {...register("aiExtractedAmount")} />
+              <input type="hidden" {...register("aiExtractedRefNo")} />
+              <input type="hidden" {...register("aiExtractedChannel")} />
+              <input type="hidden" {...register("aiConfidenceNote")} />
+
+              {toast ? (
+                <p
+                  className={
+                    toast.type === "ok"
+                      ? "rl-alert rl-alert-ok"
+                      : "rl-alert rl-alert-error"
+                  }
+                  role="status"
+                  aria-live="polite"
+                >
+                  {toast.message}
+                </p>
+              ) : null}
+
+              <div className="border-t border-[var(--border-subtle)] pt-3">
+                <button
+                  type="submit"
+                  disabled={!canSubmit}
+                  className="rl-btn rl-btn-primary rl-btn-lg rl-btn-block"
+                >
+                  {pending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+                  ) : (
+                    <Upload className="h-4 w-4" aria-hidden />
+                  )}
+                  {pending
+                    ? "Submitting for Treasurer Verification…"
+                    : !isCash && !compressedFile
+                      ? "Attach Receipt Proof Above to Submit"
+                      : `Submit ${formatPHP(Number(amount) || 0)} Payment`}
+                </button>
+              </div>
+            </section>
           </div>
         </div>
       )}

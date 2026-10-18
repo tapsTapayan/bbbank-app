@@ -1,15 +1,23 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Plus, KeyRound } from "lucide-react";
-import type { UserRole, UserStatus } from "@/generated/prisma/client";
+import {
+  Loader2,
+  Pencil,
+  Search,
+  ShieldPlus,
+  UserPlus,
+  X,
+} from "lucide-react";
 import {
   createAppUser,
   resetAppUserPassword,
   updateAppUser,
 } from "@/actions/users";
+import { formatPHP } from "@/lib/finance/loan-calculator";
 import { displayLoginId } from "@/lib/auth/staff-identity";
+import type { UserRole, UserStatus } from "@/generated/prisma/client";
 import { OpsWorkstation } from "@/components/ui/ops-workstation";
 
 export type MemberRow = {
@@ -23,588 +31,668 @@ export type MemberRow = {
   createdAt: string;
 };
 
-type CreateKind = "member" | "admin";
+type CreateModalKind = "member" | "admin" | null;
 
-function randomTempPassword(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#";
-  let out = "";
-  const bytes = crypto.getRandomValues(new Uint8Array(12));
-  for (const b of bytes) out += chars[b % chars.length];
-  return out;
-}
+const ROLE_FILTERS = [
+  "ALL",
+  "MEMBER",
+  "TREASURER",
+  "AUDITOR",
+  "ADMIN",
+] as const;
 
-export function MembersWorkspace({ users }: { users: MemberRow[] }) {
+export function MembersWorkspace({
+  users,
+  contributionPerHead = 250,
+}: {
+  users: MemberRow[];
+  contributionPerHead?: number;
+}) {
   const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-  const [secretNotice, setSecretNotice] = useState<{
-    title: string;
-    password: string;
-    recoveryLink: string | null;
-    inviteSent: boolean;
+  const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] =
+    useState<(typeof ROLE_FILTERS)[number]>("ALL");
+  const [toast, setToast] = useState<{
+    type: "ok" | "err";
+    text: string;
   } | null>(null);
-  const [showCreate, setShowCreate] = useState(false);
-  const [createKind, setCreateKind] = useState<CreateKind>("member");
-  const [editingId, setEditingId] = useState<string | null>(null);
+  const [createModal, setCreateModal] = useState<CreateModalKind>(null);
+  const [editing, setEditing] = useState<MemberRow | null>(null);
 
-  const [form, setForm] = useState({
-    name: "",
-    email: "",
-    username: "",
-    role: "MEMBER" as "MEMBER" | "TREASURER" | "AUDITOR",
-    headsCount: 1,
-    temporaryPassword: "",
-    sendInvite: false,
-  });
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return users.filter((m) => {
+      if (roleFilter !== "ALL" && m.role !== roleFilter) return false;
+      if (!q) return true;
+      const login = displayLoginId(m).toLowerCase();
+      return (
+        m.name.toLowerCase().includes(q) ||
+        login.includes(q) ||
+        m.role.toLowerCase().includes(q)
+      );
+    });
+  }, [users, search, roleFilter]);
 
-  const editing = useMemo(
-    () => users.find((u) => u.id === editingId) ?? null,
-    [users, editingId],
+  const activeHeadsTotal = useMemo(
+    () =>
+      users
+        .filter((m) => m.role === "MEMBER" && m.status === "ACTIVE")
+        .reduce((acc, m) => acc + m.headsCount, 0),
+    [users],
   );
-
-  const [editForm, setEditForm] = useState({
-    name: "",
-    role: "MEMBER" as UserRole,
-    status: "ACTIVE" as UserStatus,
-    headsCount: 1,
-  });
-
-  function openCreate(kind: CreateKind) {
-    setCreateKind(kind);
-    setError(null);
-    setForm({
-      name: "",
-      email: "",
-      username: "",
-      role: "MEMBER",
-      headsCount: 1,
-      temporaryPassword: randomTempPassword(),
-      sendInvite: false,
-    });
-    setShowCreate(true);
-  }
-
-  function openEdit(user: MemberRow) {
-    setEditingId(user.id);
-    setError(null);
-    setEditForm({
-      name: user.name,
-      role: user.role,
-      status: user.status,
-      headsCount: user.headsCount,
-    });
-  }
-
-  function onCreate(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    startTransition(async () => {
-      const payload =
-        createKind === "admin"
-          ? {
-              kind: "admin" as const,
-              name: form.name,
-              username: form.username,
-              temporaryPassword: form.temporaryPassword,
-            }
-          : {
-              kind: "member" as const,
-              name: form.name,
-              email: form.email,
-              role: form.role,
-              headsCount: form.headsCount,
-              temporaryPassword: form.temporaryPassword,
-              sendInvite: form.sendInvite,
-            };
-
-      const result = await createAppUser(payload);
-      if (!result.ok) {
-        setError(result.error);
-        return;
-      }
-      setShowCreate(false);
-      setSecretNotice({
-        title: "Account created — copy credentials now",
-        password: result.temporaryPassword,
-        recoveryLink: result.recoveryLink,
-        inviteSent: result.inviteSent,
-      });
-      router.refresh();
-    });
-  }
-
-  function onSaveEdit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!editing) return;
-    setError(null);
-    startTransition(async () => {
-      const result = await updateAppUser({
-        userId: editing.id,
-        name: editForm.name,
-        role: editForm.role,
-        status: editForm.status,
-        headsCount: editForm.headsCount,
-      });
-      if (!result.ok) {
-        setError(result.error);
-        return;
-      }
-      setEditingId(null);
-      router.refresh();
-    });
-  }
-
-  function onResetPassword(user: MemberRow, sendInvite: boolean) {
-    const temporaryPassword = randomTempPassword();
-    setError(null);
-    startTransition(async () => {
-      const result = await resetAppUserPassword({
-        userId: user.id,
-        temporaryPassword,
-        sendInvite: sendInvite && Boolean(user.email),
-      });
-      if (!result.ok) {
-        setError(result.error);
-        return;
-      }
-      setSecretNotice({
-        title: `Password reset for ${user.name}`,
-        password: result.temporaryPassword,
-        recoveryLink: result.recoveryLink,
-        inviteSent: result.inviteSent,
-      });
-    });
-  }
 
   return (
     <OpsWorkstation
-      title="Accounts"
-      description="Member and staff accounts"
-      bodyClassName="ui-stack"
+      title="Member & Role Directory"
+      description={`${users.length} accounts · ${activeHeadsTotal} active member heads (${formatPHP(activeHeadsTotal * contributionPerHead)} / kinsenas pool)`}
       actions={
-        <>
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            onClick={() => openCreate("member")}
-            className="ui-btn ui-btn-primary"
+            onClick={() => setCreateModal("member")}
+            className="rl-btn rl-btn-primary rl-btn-sm"
           >
-            <Plus className="h-4 w-4" aria-hidden />
-            Add member
+            <UserPlus className="h-4 w-4" aria-hidden />
+            New Member
           </button>
           <button
             type="button"
-            onClick={() => openCreate("admin")}
-            className="ui-btn ui-btn-secondary"
+            onClick={() => setCreateModal("admin")}
+            className="rl-btn rl-btn-secondary rl-btn-sm"
           >
-            <Plus className="h-4 w-4" aria-hidden />
-            Add admin
+            <ShieldPlus className="h-4 w-4" aria-hidden />
+            New Admin
           </button>
-        </>
+        </div>
       }
     >
-        <p className="type-caption">
-          Only <span className="font-medium text-[var(--ink)]">ACTIVE</span>{" "}
-          members can request loans (Rule #5). Set status to Inactive or
-          Suspended to block new borrowing; heads count drives ₱250/kinsena dues.
-        </p>
+      <div className="rl-stack">
+        {/* Filter & Search Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="relative min-w-[240px] flex-1 max-w-md">
+            <Search
+              className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[var(--ink-muted)]"
+              aria-hidden
+            />
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search name, username, or email…"
+              className="rl-input pl-9"
+            />
+          </div>
 
-        {error ? (
-          <p className="ui-alert ui-alert-error" role="alert">
-            {error}
+          <div className="flex flex-wrap gap-1.5" role="tablist">
+            {ROLE_FILTERS.map((r) => (
+              <button
+                key={r}
+                type="button"
+                role="tab"
+                aria-selected={roleFilter === r}
+                onClick={() => setRoleFilter(r)}
+                className={`rl-chip !min-h-8 !px-3 ${
+                  roleFilter === r ? "rl-chip-selected" : ""
+                }`}
+              >
+                {r === "ALL" ? `All (${users.length})` : r}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {toast ? (
+          <p
+            className={`rl-alert ${
+              toast.type === "ok" ? "rl-alert-ok" : "rl-alert-error"
+            }`}
+            role="status"
+          >
+            {toast.text}
           </p>
         ) : null}
 
-        {secretNotice ? (
-          <div className="ui-alert ui-alert-warn">
-            <p className="font-semibold">{secretNotice.title}</p>
-            <p className="mt-2 font-mono type-caption break-all">
-              Temp password: {secretNotice.password}
-            </p>
-            {secretNotice.recoveryLink ? (
-              <p className="mt-1 font-mono type-caption break-all">
-                Reset link: {secretNotice.recoveryLink}
-              </p>
-            ) : null}
-            <p className="mt-1 type-caption">
-              {secretNotice.inviteSent
-                ? "Recovery email was requested (requires Supabase SMTP)."
-                : "Share the password securely. It will not be shown again."}
-            </p>
-            <button
-              type="button"
-              className="mt-2 type-caption font-semibold underline"
-              onClick={() => setSecretNotice(null)}
-            >
-              Dismiss
-            </button>
-          </div>
-        ) : null}
-
-        <div className="ui-data-cards">
-          {users.length === 0 ? (
-            <p className="ui-inset py-8 text-center type-body-sm type-muted">
-              No accounts yet.
-            </p>
-          ) : null}
-          {users.map((user) => (
-            <article key={user.id} className="ui-data-card ui-stack-sm">
-              <div className="flex items-start justify-between gap-3">
+        {/* Mobile Cards */}
+        <div className="space-y-2.5 md:hidden">
+          {filtered.map((m) => (
+            <div key={m.id} className="rl-card rl-card-pad">
+              <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="type-body-sm font-semibold truncate">
-                    {user.name}
+                  <p className="type-body-sm truncate font-semibold">
+                    {m.name}
                   </p>
-                  <p className="type-caption mt-1 truncate">
-                    {displayLoginId(user)}
-                  </p>
+                  <p className="type-caption truncate">{displayLoginId(m)}</p>
                 </div>
                 <span
                   className={
-                    user.status === "ACTIVE"
-                      ? "ui-pill ui-pill-audited shrink-0"
-                      : user.status === "SUSPENDED"
-                        ? "ui-pill ui-pill-rejected shrink-0"
-                        : "ui-pill ui-pill-neutral shrink-0"
+                    m.status === "ACTIVE"
+                      ? "rl-pill rl-pill-verified"
+                      : m.status === "INACTIVE"
+                        ? "rl-pill rl-pill-pending"
+                        : "rl-pill rl-pill-rejected"
                   }
                 >
-                  {user.status}
+                  {m.status}
                 </span>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="ui-pill ui-pill-verified">
-                  {user.role}
-                </span>
-                <span className="type-caption">
-                  Heads: {user.username ? "—" : user.headsCount}
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-2 pt-1">
+              <div className="mt-3 flex items-center justify-between border-t border-[var(--border-subtle)] pt-3">
+                <div className="flex items-center gap-2">
+                  <span className="rl-pill rl-pill-neutral">{m.role}</span>
+                  <span className="type-caption font-mono">
+                    {m.headsCount}H ·{" "}
+                    {formatPHP(m.headsCount * contributionPerHead)}
+                  </span>
+                </div>
                 <button
                   type="button"
-                  onClick={() => openEdit(user)}
-                  className="ui-btn ui-btn-secondary !h-10 !min-h-10 flex-1 type-caption font-semibold"
+                  onClick={() => setEditing(m)}
+                  className="rl-btn rl-btn-secondary rl-btn-sm"
                 >
+                  <Pencil className="h-3.5 w-3.5" aria-hidden />
                   Edit
                 </button>
-                <button
-                  type="button"
-                  onClick={() => onResetPassword(user, false)}
-                  disabled={pending}
-                  className="ui-btn ui-btn-ghost !h-10 !min-h-10 flex-1 type-caption font-semibold"
-                >
-                  <KeyRound className="h-3.5 w-3.5" aria-hidden />
-                  Reset PW
-                </button>
               </div>
-            </article>
+            </div>
           ))}
         </div>
 
-        <div className="ui-data-table ui-table-wrap min-h-0 flex-1">
-          <table className="ui-table">
+        {/* Desktop Data Table */}
+        <div className="hidden overflow-x-auto rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface-elevated)] shadow-[var(--shadow-card)] md:block">
+          <table className="rl-table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Login</th>
+                <th>Account</th>
                 <th>Role</th>
                 <th>Status</th>
                 <th>Heads</th>
-                <th>Actions</th>
+                <th className="text-right">Kinsenas Due</th>
+                <th className="text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {users.map((user) => (
-                <tr key={user.id}>
-                  <td className="font-medium text-[var(--ink)]">{user.name}</td>
-                  <td className="text-[var(--ink-muted)]">
-                    {displayLoginId(user)}
+              {filtered.map((m) => (
+                <tr key={m.id}>
+                  <td>
+                    <p className="font-semibold text-[var(--ink)]">{m.name}</p>
+                    <p className="type-caption">{displayLoginId(m)}</p>
                   </td>
                   <td>
-                    <span className="ui-pill ui-pill-verified">
-                      {user.role}
-                    </span>
+                    <span className="rl-pill rl-pill-neutral">{m.role}</span>
                   </td>
                   <td>
                     <span
                       className={
-                        user.status === "ACTIVE"
-                          ? "ui-pill ui-pill-audited"
-                          : user.status === "SUSPENDED"
-                            ? "ui-pill ui-pill-rejected"
-                            : "ui-pill ui-pill-neutral"
+                        m.status === "ACTIVE"
+                          ? "rl-pill rl-pill-verified"
+                          : m.status === "INACTIVE"
+                            ? "rl-pill rl-pill-pending"
+                            : "rl-pill rl-pill-rejected"
                       }
                     >
-                      {user.status}
+                      {m.status}
                     </span>
                   </td>
-                  <td className="tabular-nums">
-                    {user.username ? "—" : user.headsCount}
+                  <td className="font-mono font-semibold tabular-nums">
+                    {m.headsCount}
                   </td>
-                  <td>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={() => openEdit(user)}
-                        className="ui-btn ui-btn-sm ui-btn-ghost type-caption font-semibold text-[var(--brand)]"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onResetPassword(user, false)}
-                        disabled={pending}
-                        className="ui-btn ui-btn-sm ui-btn-ghost type-caption font-semibold"
-                      >
-                        <KeyRound className="h-3.5 w-3.5" aria-hidden />
-                        Reset PW
-                      </button>
-                      {user.email ? (
-                        <button
-                          type="button"
-                          onClick={() => onResetPassword(user, true)}
-                          disabled={pending}
-                          className="ui-btn ui-btn-sm ui-btn-ghost type-caption font-semibold"
-                        >
-                          Reset + email
-                        </button>
-                      ) : null}
-                    </div>
+                  <td className="text-right font-mono font-semibold tabular-nums">
+                    {formatPHP(m.headsCount * contributionPerHead)}
+                  </td>
+                  <td className="text-right">
+                    <button
+                      type="button"
+                      onClick={() => setEditing(m)}
+                      className="rl-btn rl-btn-secondary rl-btn-sm"
+                    >
+                      <Pencil className="h-3.5 w-3.5" aria-hidden />
+                      Manage
+                    </button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+      </div>
 
-      {showCreate ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-[rgb(0_21_41_/0.5)] p-4">
-          <form
-            onSubmit={onCreate}
-            className="ui-panel ui-stack w-full max-w-md"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="create-account-title"
-          >
-            <h2 className="type-title" id="create-account-title">
-              {createKind === "admin" ? "New admin" : "New fund member"}
-            </h2>
-            <label className="ui-field">
-              <span className="ui-field-label">Name</span>
-              <input
-                required
-                value={form.name}
-                onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                className="ui-input"
-              />
-            </label>
-            {createKind === "admin" ? (
-              <label className="ui-field">
-                <span className="ui-field-label">Username</span>
-                <input
-                  required
-                  value={form.username}
-                  onChange={(e) =>
-                    setForm((f) => ({ ...f, username: e.target.value }))
-                  }
-                  className="ui-input"
-                />
-              </label>
-            ) : (
-              <>
-                <label className="ui-field">
-                  <span className="ui-field-label">Email</span>
-                  <input
-                    type="email"
-                    required
-                    value={form.email}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, email: e.target.value }))
-                    }
-                    className="ui-input"
-                  />
-                </label>
-                <label className="ui-field">
-                  <span className="ui-field-label">Role</span>
-                  <select
-                    value={form.role}
-                    onChange={(e) =>
-                      setForm((f) => ({
-                        ...f,
-                        role: e.target.value as typeof form.role,
-                      }))
-                    }
-                    className="ui-select"
-                  >
-                    <option value="MEMBER">MEMBER</option>
-                    <option value="TREASURER">TREASURER</option>
-                    <option value="AUDITOR">AUDITOR</option>
-                  </select>
-                </label>
-                <label className="ui-field">
-                  <span className="ui-field-label">Heads count</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={50}
-                    required
-                    value={form.headsCount}
-                    onChange={(e) =>
-                      setForm((f) => ({
-                        ...f,
-                        headsCount: Number(e.target.value) || 1,
-                      }))
-                    }
-                    className="ui-input"
-                  />
-                </label>
-                <label className="flex min-h-11 items-center gap-3 type-body-sm">
-                  <input
-                    type="checkbox"
-                    checked={form.sendInvite}
-                    onChange={(e) =>
-                      setForm((f) => ({ ...f, sendInvite: e.target.checked }))
-                    }
-                    className="h-4 w-4"
-                  />
-                  Send invite / recovery email
-                </label>
-              </>
-            )}
-            <label className="ui-field">
-              <span className="ui-field-label">Temporary password</span>
-              <input
-                required
-                value={form.temporaryPassword}
-                onChange={(e) =>
-                  setForm((f) => ({
-                    ...f,
-                    temporaryPassword: e.target.value,
-                  }))
-                }
-                className="ui-input font-mono"
-              />
-            </label>
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowCreate(false)}
-                className="ui-btn ui-btn-ghost"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={pending}
-                className="ui-btn ui-btn-primary"
-              >
-                {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                Create
-              </button>
-            </div>
-          </form>
-        </div>
+      {createModal ? (
+        <CreateAccountModal
+          kind={createModal}
+          contributionPerHead={contributionPerHead}
+          onClose={() => setCreateModal(null)}
+          onCreated={(message) => {
+            setCreateModal(null);
+            setToast({ type: "ok", text: message });
+            router.refresh();
+          }}
+        />
       ) : null}
 
       {editing ? (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-[rgb(0_21_41_/0.5)] p-4">
-          <form
-            onSubmit={onSaveEdit}
-            className="ui-panel ui-stack w-full max-w-md"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="edit-account-title"
+        <EditMemberModal
+          member={editing}
+          contributionPerHead={contributionPerHead}
+          onClose={() => setEditing(null)}
+          onSaved={(message) => {
+            setEditing(null);
+            setToast({ type: "ok", text: message });
+            router.refresh();
+          }}
+        />
+      ) : null}
+    </OpsWorkstation>
+  );
+}
+
+function CreateAccountModal({
+  kind,
+  contributionPerHead,
+  onClose,
+  onCreated,
+}: {
+  kind: "member" | "admin";
+  contributionPerHead: number;
+  onClose: () => void;
+  onCreated: (message: string) => void;
+}) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [headsCount, setHeadsCount] = useState(1);
+  const [role, setRole] = useState<"MEMBER" | "TREASURER" | "AUDITOR">(
+    "MEMBER",
+  );
+  const [sendInvite, setSendInvite] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+
+    startTransition(async () => {
+      if (kind === "admin") {
+        const result = await createAppUser({
+          kind: "admin",
+          name,
+          username,
+          temporaryPassword: password,
+        });
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
+        onCreated(`Admin @${username} created.`);
+        return;
+      }
+
+      const result = await createAppUser({
+        kind: "member",
+        name,
+        email,
+        role,
+        headsCount,
+        temporaryPassword: password,
+        sendInvite,
+      });
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      onCreated(`Member ${name} (${email}) created.`);
+    });
+  }
+
+  return (
+    <div
+      className="rl-modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="rl-modal-dialog">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="type-heading">
+            {kind === "admin" ? "New Admin Account" : "New Member Account"}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rl-icon-btn rl-icon-btn-sm"
+            aria-label="Close"
           >
-            <h2 className="type-title" id="edit-account-title">
-              Edit {editing.name}
-            </h2>
-            <label className="ui-field">
-              <span className="ui-field-label">Name</span>
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <form onSubmit={submit} className="mt-4 rl-stack">
+          <label className="rl-field">
+            <span className="rl-field-label">Full Name</span>
+            <input
+              required
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="rl-input"
+              placeholder="Juan Dela Cruz"
+            />
+          </label>
+
+          {kind === "admin" ? (
+            <label className="rl-field">
+              <span className="rl-field-label">Username</span>
               <input
                 required
-                value={editForm.name}
-                onChange={(e) =>
-                  setEditForm((f) => ({ ...f, name: e.target.value }))
-                }
-                className="ui-input"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="rl-input font-mono"
+                placeholder="admin2"
               />
             </label>
-            {editing.username ? (
-              <p className="type-caption">
-                Admin account (@{editing.username}) — role stays ADMIN.
-              </p>
-            ) : (
-              <>
-                <label className="ui-field">
-                  <span className="ui-field-label">Role</span>
-                  <select
-                    value={editForm.role}
+          ) : (
+            <label className="rl-field">
+              <span className="rl-field-label">Email Address</span>
+              <input
+                required
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="rl-input"
+                placeholder="member@cpe.edu.ph"
+              />
+            </label>
+          )}
+
+          <label className="rl-field">
+            <span className="rl-field-label">Initial Password</span>
+            <input
+              required
+              type="password"
+              minLength={8}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="rl-input"
+              placeholder="Minimum 8 characters"
+            />
+          </label>
+
+          {kind === "member" ? (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="rl-field">
+                  <span className="rl-field-label">Heads Count</span>
+                  <input
+                    required
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={headsCount}
                     onChange={(e) =>
-                      setEditForm((f) => ({
-                        ...f,
-                        role: e.target.value as UserRole,
-                      }))
+                      setHeadsCount(Math.max(1, Number(e.target.value) || 1))
                     }
-                    className="ui-select"
+                    className="rl-input font-mono"
+                  />
+                  <span className="rl-field-hint">
+                    {formatPHP(headsCount * contributionPerHead)} / kinsenas
+                  </span>
+                </label>
+
+                <label className="rl-field">
+                  <span className="rl-field-label">Role</span>
+                  <select
+                    value={role}
+                    onChange={(e) => setRole(e.target.value as typeof role)}
+                    className="rl-select"
                   >
                     <option value="MEMBER">MEMBER</option>
                     <option value="TREASURER">TREASURER</option>
                     <option value="AUDITOR">AUDITOR</option>
                   </select>
                 </label>
-                <label className="ui-field">
-                  <span className="ui-field-label">Heads count</span>
-                  <input
-                    type="number"
-                    min={1}
-                    max={50}
-                    value={editForm.headsCount}
-                    onChange={(e) =>
-                      setEditForm((f) => ({
-                        ...f,
-                        headsCount: Number(e.target.value) || 1,
-                      }))
-                    }
-                    className="ui-input"
-                  />
-                </label>
-              </>
-            )}
-            <label className="ui-field">
-              <span className="ui-field-label">Status</span>
-              <select
-                value={editForm.status}
+              </div>
+
+              <label className="flex items-center gap-2 text-xs text-[var(--ink-secondary)]">
+                <input
+                  type="checkbox"
+                  checked={sendInvite}
+                  onChange={(e) => setSendInvite(e.target.checked)}
+                  className="h-4 w-4 rounded border-[var(--border)] accent-[var(--brand)]"
+                />
+                Send password setup email invite
+              </label>
+            </>
+          ) : null}
+
+          {error ? (
+            <p className="rl-alert rl-alert-error" role="alert">
+              {error}
+            </p>
+          ) : null}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rl-btn rl-btn-secondary"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={pending}
+              className="rl-btn rl-btn-primary"
+            >
+              {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Create Account
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function EditMemberModal({
+  member,
+  contributionPerHead,
+  onClose,
+  onSaved,
+}: {
+  member: MemberRow;
+  contributionPerHead: number;
+  onClose: () => void;
+  onSaved: (message: string) => void;
+}) {
+  const [name, setName] = useState(member.name);
+  const [headsCount, setHeadsCount] = useState(member.headsCount);
+  const [role, setRole] = useState(member.role);
+  const [status, setStatus] = useState(member.status);
+  const [newPassword, setNewPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [pending, startTransition] = useTransition();
+
+  const isAdminAccount = member.role === "ADMIN" || Boolean(member.username);
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  function save(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    startTransition(async () => {
+      const result = await updateAppUser({
+        userId: member.id,
+        name,
+        headsCount,
+        role,
+        status,
+      });
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+
+      if (newPassword.trim()) {
+        const pwRes = await resetAppUserPassword({
+          userId: member.id,
+          temporaryPassword: newPassword.trim(),
+          sendInvite: false,
+        });
+        if (!pwRes.ok) {
+          setError(pwRes.error);
+          return;
+        }
+      }
+
+      onSaved("Account updated.");
+    });
+  }
+
+  return (
+    <div
+      className="rl-modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div className="rl-modal-dialog">
+        <div className="flex items-start justify-between gap-2">
+          <div>
+            <h2 className="type-heading">Manage Account</h2>
+            <p className="type-caption mt-0.5">{displayLoginId(member)}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rl-icon-btn rl-icon-btn-sm"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <form onSubmit={save} className="mt-4 rl-stack">
+          <label className="rl-field">
+            <span className="rl-field-label">Full Name</span>
+            <input
+              required
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="rl-input"
+            />
+          </label>
+
+          <div className="grid grid-cols-2 gap-3">
+            <label className="rl-field">
+              <span className="rl-field-label">Heads Count</span>
+              <input
+                required
+                type="number"
+                min={1}
+                max={50}
+                disabled={isAdminAccount}
+                value={headsCount}
                 onChange={(e) =>
-                  setEditForm((f) => ({
-                    ...f,
-                    status: e.target.value as UserStatus,
-                  }))
+                  setHeadsCount(Math.max(1, Number(e.target.value) || 1))
                 }
-                className="ui-select"
+                className="rl-input font-mono disabled:opacity-60"
+              />
+              <span className="rl-field-hint">
+                {formatPHP(headsCount * contributionPerHead)} / kinsenas
+              </span>
+            </label>
+
+            <label className="rl-field">
+              <span className="rl-field-label">Status</span>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value as typeof status)}
+                className="rl-select"
               >
                 <option value="ACTIVE">ACTIVE</option>
                 <option value="INACTIVE">INACTIVE</option>
                 <option value="SUSPENDED">SUSPENDED</option>
               </select>
             </label>
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setEditingId(null)}
-                className="ui-btn ui-btn-ghost"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={pending}
-                className="ui-btn ui-btn-primary"
-              >
-                {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                Save
-              </button>
-            </div>
-          </form>
-        </div>
-      ) : null}
-    </OpsWorkstation>
+          </div>
+
+          <label className="rl-field">
+            <span className="rl-field-label">Role</span>
+            <select
+              value={role}
+              disabled={isAdminAccount}
+              onChange={(e) => setRole(e.target.value as typeof role)}
+              className="rl-select disabled:opacity-60"
+            >
+              {isAdminAccount ? (
+                <option value="ADMIN">ADMIN</option>
+              ) : (
+                <>
+                  <option value="MEMBER">MEMBER</option>
+                  <option value="TREASURER">TREASURER</option>
+                  <option value="AUDITOR">AUDITOR</option>
+                </>
+              )}
+            </select>
+          </label>
+
+          <label className="rl-field">
+            <span className="rl-field-label">Reset Password (Optional)</span>
+            <input
+              type="password"
+              minLength={8}
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder="Leave blank to keep existing password"
+              className="rl-input"
+            />
+          </label>
+
+          {error ? (
+            <p className="rl-alert rl-alert-error" role="alert">
+              {error}
+            </p>
+          ) : null}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rl-btn rl-btn-secondary"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={pending}
+              className="rl-btn rl-btn-primary"
+            >
+              {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Save Changes
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }

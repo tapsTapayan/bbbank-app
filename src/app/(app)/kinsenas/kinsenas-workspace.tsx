@@ -1,15 +1,28 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { CalendarPlus, Loader2 } from "lucide-react";
+import {
+  CalendarPlus,
+  CheckCircle2,
+  Loader2,
+  Sparkles,
+  CalendarClock,
+} from "lucide-react";
 import {
   openCurrentKinsenaAction,
   openNextKinsenaAction,
-  openKinsenaPeriodAction,
   openPayableWindowAction,
 } from "@/actions/contributions";
 import { OpsWorkstation } from "@/components/ui/ops-workstation";
+
+type PreviewPeriod = {
+  year: number;
+  monthIndex: number;
+  kinsenaIndex: 1 | 2;
+  label: string;
+};
 
 export function KinsenasWorkspace({
   cycleName,
@@ -17,134 +30,180 @@ export function KinsenasWorkspace({
   previewNext,
 }: {
   cycleName: string | null;
-  previewCurrent: {
-    year: number;
-    monthIndex: number;
-    kinsenaIndex: 1 | 2;
-    label: string;
-  };
-  previewNext: {
-    year: number;
-    monthIndex: number;
-    kinsenaIndex: 1 | 2;
-    label: string;
-  };
+  previewCurrent: PreviewPeriod;
+  previewNext: PreviewPeriod;
 }) {
   const router = useRouter();
-  const [toast, setToast] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [toast, setToast] = useState<{
+    type: "ok" | "err";
+    text: string;
+  } | null>(null);
 
-  function run(
-    action: () => Promise<{
-      success: boolean;
-      error?: string;
-      message?: string;
-    }>,
-  ) {
+  const hasActiveCycle = Boolean(cycleName);
+
+  function openPeriod(target: "current" | "next" | "window") {
     startTransition(async () => {
-      const result = await action();
+      const result =
+        target === "current"
+          ? await openCurrentKinsenaAction()
+          : target === "next"
+            ? await openNextKinsenaAction()
+            : await openPayableWindowAction();
       if (!result.success) {
-        setToast(result.error ?? "Failed.");
+        setToast({ type: "err", text: result.error });
         return;
       }
-      setToast(result.message ?? "Kinsena opened.");
+      setToast({
+        type: "ok",
+        text: result.message ?? "Kinsena obligations opened.",
+      });
       router.refresh();
     });
   }
 
   return (
     <OpsWorkstation
-      title="Open contribution periods"
-      description={cycleName ?? "No active cycle"}
-      bodyClassName="ui-page max-w-4xl"
-    >
-      {toast ? (
-        <p className="ui-alert ui-alert-info mb-4" role="status">
-          {toast}
-        </p>
-      ) : null}
-
-      {!cycleName ? (
-        <p className="ui-alert ui-alert-warn mb-4">
-          No active cycle — start one on Cycle settings.
-        </p>
-      ) : null}
-
-      <div className="ui-desk ui-desk-col">
-        <section className="ui-desk-section">
-          <h2 className="type-title">Open payable window</h2>
-          <p className="type-caption">
-            Cycle start through next period (catch-up, current, advance).
-          </p>
-          <button
-            type="button"
-            disabled={pending || !cycleName}
-            className="ui-btn ui-btn-primary sm:w-auto"
-            onClick={() => run(() => openPayableWindowAction())}
+      title="Kinsenas Period Generator"
+      description={
+        cycleName
+          ? `Active cycle: ${cycleName} · Generate 15th & EOM contribution rows (₱250 × heads)`
+          : "No active fund cycle configured"
+      }
+      actions={
+        <>
+          <span
+            className={
+              hasActiveCycle
+                ? "rl-pill rl-pill-verified"
+                : "rl-pill rl-pill-rejected"
+            }
           >
-            {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            Open year to date + next
-          </button>
+            {hasActiveCycle ? `Cycle: ${cycleName}` : "No Active Cycle"}
+          </span>
+          {toast ? (
+            <p
+              className={`rl-alert !py-1.5 !px-3 type-caption ${
+                toast.type === "ok" ? "rl-alert-ok" : "rl-alert-error"
+              }`}
+              role="status"
+            >
+              {toast.text}
+            </p>
+          ) : null}
+        </>
+      }
+    >
+      <div className="mx-auto max-w-4xl rl-stack">
+        {!hasActiveCycle ? (
+          <div className="rl-alert rl-alert-warn flex flex-wrap items-center justify-between gap-3">
+            <span>
+              Create or activate a fund cycle before opening kinsenas contribution periods.
+            </span>
+            <Link href="/cycle" className="rl-btn rl-btn-primary rl-btn-sm">
+              Configure Cycle Settings
+            </Link>
+          </div>
+        ) : null}
+
+        {/* Recommended Bulk Window Card */}
+        <section className="rl-vault-card">
+          <div className="rl-vault-body">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="rl-vault-eyebrow">Recommended Bulk Action</p>
+                <h2 className="mt-1 text-xl font-bold text-white">
+                  Synchronize Payable Window (YTD + Next Kinsena)
+                </h2>
+                <p className="mt-1.5 max-w-2xl text-xs leading-relaxed text-white/80">
+                  Idempotently creates all 15th & EOM contribution rows from the start of the active cycle through the upcoming kinsena so members can settle past-due, current, or advance obligations immediately.
+                </p>
+              </div>
+              <span className="rl-vault-badge">
+                <Sparkles className="h-3.5 w-3.5" aria-hidden />
+                Idempotent
+              </span>
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                disabled={pending || !hasActiveCycle}
+                onClick={() => openPeriod("window")}
+                className="rl-btn rl-btn-vault rl-btn-lg"
+              >
+                {pending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <CalendarPlus className="h-4 w-4" />
+                )}
+                Open All Payable Periods (YTD + Next)
+              </button>
+            </div>
+          </div>
         </section>
 
-        <div className="ui-desk-split">
-          <section>
-            <div className="flex items-center gap-2">
-              <CalendarPlus
-                className="h-4 w-4 text-[var(--brand)]"
-                aria-hidden
-              />
-              <h2 className="type-title">Current</h2>
+        {/* Individual Period Cards */}
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="rl-desk rl-desk-section flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="type-label text-[var(--brand)]">
+                  Current Kinsena
+                </span>
+                <span className="rl-pill rl-pill-neutral">
+                  Kinsena #{previewCurrent.kinsenaIndex}
+                </span>
+              </div>
+              <h2 className="type-heading mt-2">{previewCurrent.label}</h2>
+              <p className="type-caption mt-1.5 flex items-center gap-1.5">
+                <CalendarClock className="h-3.5 w-3.5" aria-hidden />
+                Generates ₱250 × heads rows for the current half-month window.
+              </p>
             </div>
-            <p className="type-body-sm font-medium">{previewCurrent.label}</p>
             <button
               type="button"
-              disabled={pending || !cycleName}
-              className="ui-btn ui-btn-primary mt-auto sm:w-auto"
-              onClick={() => run(() => openCurrentKinsenaAction())}
+              disabled={pending || !hasActiveCycle}
+              onClick={() => openPeriod("current")}
+              className="rl-btn rl-btn-primary rl-btn-block mt-4"
             >
-              {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Open current
+              {pending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <CalendarPlus className="h-4 w-4" />
+              )}
+              Open Current Kinsena
             </button>
-          </section>
+          </div>
 
-          <section>
-            <div className="flex items-center gap-2">
-              <CalendarPlus
-                className="h-4 w-4 text-[var(--brand)]"
-                aria-hidden
-              />
-              <h2 className="type-title">Next (advance)</h2>
+          <div className="rl-desk rl-desk-section flex flex-col justify-between">
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <span className="type-label">Next Kinsena (Advance)</span>
+                <span className="rl-pill rl-pill-neutral">
+                  Kinsena #{previewNext.kinsenaIndex}
+                </span>
+              </div>
+              <h2 className="type-heading mt-2">{previewNext.label}</h2>
+              <p className="type-caption mt-1.5 flex items-center gap-1.5">
+                <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+                Opens the upcoming kinsena early so members can pay in advance.
+              </p>
             </div>
-            <p className="type-body-sm font-medium">{previewNext.label}</p>
-            <div className="mt-auto flex flex-wrap gap-2">
-              <button
-                type="button"
-                disabled={pending || !cycleName}
-                className="ui-btn ui-btn-secondary"
-                onClick={() => run(() => openNextKinsenaAction())}
-              >
-                {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                Open next
-              </button>
-              <button
-                type="button"
-                disabled={pending || !cycleName}
-                className="ui-btn ui-btn-ghost"
-                onClick={() =>
-                  run(() =>
-                    openKinsenaPeriodAction({
-                      year: previewNext.year,
-                      monthIndex: previewNext.monthIndex,
-                      kinsenaIndex: previewNext.kinsenaIndex,
-                    }),
-                  )
-                }
-              >
-                Open {previewNext.label}
-              </button>
-            </div>
-          </section>
+            <button
+              type="button"
+              disabled={pending || !hasActiveCycle}
+              onClick={() => openPeriod("next")}
+              className="rl-btn rl-btn-secondary rl-btn-block mt-4"
+            >
+              {pending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <CalendarPlus className="h-4 w-4" />
+              )}
+              Open Next Kinsena
+            </button>
+          </div>
         </div>
       </div>
     </OpsWorkstation>

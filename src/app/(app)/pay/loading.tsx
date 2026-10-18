@@ -1,16 +1,17 @@
 export default function PayLoading() {
   return (
-    <div className="ui-pay-page animate-pulse" aria-hidden>
-      <div className="h-8 w-48 rounded-[var(--radius)] bg-[var(--border)]" />
-      <div className="ui-desk ui-pay-shell min-h-[28rem]">
-        <div className="ui-pay-rail gap-3">
-          <div className="h-16 rounded-[var(--radius)] bg-[var(--border)]" />
-          <div className="h-40 rounded-[var(--radius)] bg-[var(--border)]" />
-        </div>
-        <div className="ui-pay-work">
-          <div className="h-16 border-b border-[var(--border)] bg-[var(--border)]/40" />
-          <div className="m-5 h-36 rounded-[var(--radius)] bg-[var(--border)]" />
-          <div className="mx-5 mb-5 h-24 rounded-[var(--radius)] bg-[var(--border)]" />
+    <div className="rl-fund-frame rl-pay-page animate-pulse" aria-hidden>
+      <div className="space-y-2 border-b border-[var(--border)] pb-4">
+        <div className="h-3.5 w-28 rounded bg-[var(--border)]/70" />
+        <div className="h-8 w-64 rounded bg-[var(--border)]/60" />
+        <div className="h-4 w-80 rounded bg-[var(--border)]/45" />
+      </div>
+      <div className="rl-pay-grid">
+        <div className="h-96 rounded-[var(--radius-card)] bg-[var(--border)]/50" />
+        <div className="space-y-5">
+          <div className="h-36 rounded-[var(--radius-card)] bg-[var(--border)]/50" />
+          <div className="h-48 rounded-[var(--radius-card)] bg-[var(--border)]/45" />
+          <div className="h-56 rounded-[var(--radius-card)] bg-[var(--border)]/40" />
         </div>
       </div>
     </div>

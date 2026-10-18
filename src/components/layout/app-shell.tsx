@@ -22,14 +22,14 @@ import {
 } from "lucide-react";
 import { clsx } from "clsx";
 import type { UserRole } from "@/generated/prisma/client";
-import { BbbMark, BbbWordmark } from "@/components/brand/bbb-mark";
+import { BbbMark } from "@/components/brand/bbb-mark";
 import { SignOutButton } from "@/components/auth/sign-out-button";
 
 /**
- * Adaptive navigation (Material Adaptive + HIG):
- * - ≥768px: sidebar only
- * - <768px: brand strip + bottom dock (≤5) — never both hamburger and dock
- * Overflow destinations live in a "More" sheet, not a competing top nav.
+ * Adaptive Chrome — Royal Ledger Sovereign Architecture
+ * - <768px: Top contextual glass header + 5-slot bottom dock + More sheet
+ * - 768–1023px: Sovereign Midnight compact icon rail
+ * - ≥1024px: Collapsible Sovereign Midnight sidebar with grouped navigation & identity card
  */
 
 type NavItem = {
@@ -45,7 +45,7 @@ const ALL_NAV: readonly NavItem[] = [
   {
     id: "dashboard",
     href: "/dashboard",
-    label: "Home",
+    label: "Overview",
     icon: Home,
     roles: ["MEMBER", "TREASURER", "AUDITOR"],
     section: "fund",
@@ -53,7 +53,7 @@ const ALL_NAV: readonly NavItem[] = [
   {
     id: "pay",
     href: "/pay",
-    label: "Pay",
+    label: "Pay Dues",
     icon: Upload,
     roles: ["MEMBER", "TREASURER", "AUDITOR"],
     section: "fund",
@@ -69,7 +69,7 @@ const ALL_NAV: readonly NavItem[] = [
   {
     id: "verify",
     href: "/verify",
-    label: "Verify",
+    label: "Verify Queue",
     icon: ClipboardCheck,
     roles: ["TREASURER"],
     section: "ops",
@@ -77,7 +77,7 @@ const ALL_NAV: readonly NavItem[] = [
   {
     id: "loans-admin",
     href: "/loans-admin",
-    label: "Loan desk",
+    label: "Loan Desk",
     icon: Briefcase,
     roles: ["TREASURER"],
     section: "ops",
@@ -93,7 +93,7 @@ const ALL_NAV: readonly NavItem[] = [
   {
     id: "passes",
     href: "/passes",
-    label: "Passes",
+    label: "Penalty Passes",
     icon: TicketCheck,
     roles: ["TREASURER", "AUDITOR"],
     section: "ops",
@@ -101,7 +101,7 @@ const ALL_NAV: readonly NavItem[] = [
   {
     id: "audit",
     href: "/audit",
-    label: "Audit",
+    label: "Audit Ledger",
     icon: BookOpenCheck,
     roles: ["AUDITOR"],
     section: "ops",
@@ -117,7 +117,7 @@ const ALL_NAV: readonly NavItem[] = [
   {
     id: "cycle",
     href: "/cycle",
-    label: "Cycle",
+    label: "Cycle Rules",
     icon: Settings2,
     roles: ["ADMIN"],
     section: "ops",
@@ -125,14 +125,13 @@ const ALL_NAV: readonly NavItem[] = [
   {
     id: "profile",
     href: "/profile",
-    label: "Profile",
+    label: "Profile & PIN",
     icon: UserRound,
     roles: ["MEMBER", "TREASURER", "AUDITOR", "ADMIN"],
     section: "account",
   },
 ];
 
-/** Primary dock order per role (max 4 real destinations; 5th may be More). */
 const DOCK_IDS: Record<UserRole, readonly string[]> = {
   MEMBER: ["dashboard", "pay", "loans", "profile"],
   TREASURER: ["verify", "pay", "loans-admin", "passes"],
@@ -144,7 +143,7 @@ const ROLE_LABEL: Record<UserRole, string> = {
   MEMBER: "Member",
   TREASURER: "Treasurer",
   AUDITOR: "Auditor",
-  ADMIN: "Admin",
+  ADMIN: "Administrator",
 };
 
 const OPS_PREFIXES = [
@@ -170,12 +169,12 @@ function isOpsPath(pathname: string): boolean {
 function NavLinkRow({
   item,
   pathname,
-  collapsed,
+  mode,
   onNavigate,
 }: {
   item: NavItem;
   pathname: string;
-  collapsed: boolean;
+  mode: "full" | "rail";
   onNavigate?: () => void;
 }) {
   const Icon = item.icon;
@@ -183,15 +182,21 @@ function NavLinkRow({
   return (
     <Link
       href={item.href}
-      title={collapsed ? item.label : undefined}
+      title={mode === "rail" ? item.label : undefined}
       aria-current={active ? "page" : undefined}
       onClick={onNavigate}
-      className={clsx("ui-rail-link", collapsed && "justify-center px-0")}
+      className={clsx("rl-rail-link", mode === "rail" && "justify-center px-0")}
     >
-      <Icon className="h-4 w-4 shrink-0" strokeWidth={active ? 2.25 : 1.75} aria-hidden />
-      {!collapsed ? (
-        <span className="type-body-sm font-medium">{item.label}</span>
-      ) : null}
+      <Icon
+        className="h-[18px] w-[18px] shrink-0"
+        strokeWidth={active ? 2.25 : 1.75}
+        aria-hidden
+      />
+      {mode === "full" ? (
+        <span className="truncate">{item.label}</span>
+      ) : (
+        <span className="sr-only">{item.label}</span>
+      )}
     </Link>
   );
 }
@@ -199,19 +204,19 @@ function NavLinkRow({
 function SidebarNav({
   items,
   pathname,
-  collapsed,
+  mode,
   onNavigate,
 }: {
   items: readonly NavItem[];
   pathname: string;
-  collapsed: boolean;
+  mode: "full" | "rail";
   onNavigate?: () => void;
 }) {
   const sections = (
     [
-      { key: "fund", label: "Fund" },
-      { key: "ops", label: "Operations" },
-      { key: "account", label: "Account" },
+      { key: "fund", label: "Personal Fund" },
+      { key: "ops", label: "Treasury & Ops" },
+      { key: "account", label: "Security" },
     ] as const
   )
     .map((section) => ({
@@ -221,18 +226,18 @@ function SidebarNav({
     .filter((s) => s.rows.length > 0);
 
   return (
-    <nav className="flex-1 overflow-y-auto px-2 py-3" aria-label="App">
+    <nav className="flex-1 overflow-y-auto px-3 py-4" aria-label="Primary navigation">
       {sections.map((section) => (
-        <div key={section.key} className="ui-nav-section">
-          {!collapsed && sections.length > 1 ? (
-            <p className="type-label px-2.5 pb-1.5">{section.label}</p>
+        <div key={section.key} className="rl-nav-section">
+          {mode === "full" && sections.length > 1 ? (
+            <p className="rl-nav-section-label">{section.label}</p>
           ) : null}
           {section.rows.map((item) => (
             <NavLinkRow
               key={item.id}
               item={item}
               pathname={pathname}
-              collapsed={collapsed}
+              mode={mode}
               onNavigate={onNavigate}
             />
           ))}
@@ -277,7 +282,7 @@ function MoreSheet({
     <div className="fixed inset-0 z-[60] md:hidden" role="presentation">
       <button
         type="button"
-        className="absolute inset-0 bg-[rgb(0_21_41_/0.45)]"
+        className="absolute inset-0 bg-[rgb(0_21_41_/0.55)] backdrop-blur-[2px]"
         aria-label="Dismiss menu"
         onClick={onClose}
       />
@@ -285,51 +290,60 @@ function MoreSheet({
         role="dialog"
         aria-modal="true"
         aria-labelledby="more-sheet-title"
-        className="ui-sheet-enter absolute inset-x-0 bottom-0 max-h-[85dvh] overflow-y-auto rounded-t-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface-elevated)] shadow-[var(--shadow-elevated)]"
+        className="rl-sheet-enter absolute inset-x-0 bottom-0 max-h-[85dvh] overflow-y-auto rounded-t-[var(--radius-lg)] border-t border-[var(--border)] bg-[var(--surface-elevated)] shadow-[var(--shadow-elevated)]"
       >
-        <div className="flex items-center justify-between border-b border-[var(--border)] px-4 py-3">
-          <div>
+        <div className="mx-auto mt-2.5 h-1 w-10 rounded-full bg-[var(--border-strong)]" />
+        <div className="flex items-center justify-between border-b border-[var(--border-subtle)] px-5 py-3.5">
+          <div className="min-w-0">
             <p className="type-title" id="more-sheet-title">
-              More
+              Workspace & Account
             </p>
-            <p className="type-caption mt-0.5">
+            <p className="type-caption mt-0.5 truncate">
               {loginId} · {roleLabel}
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="ui-icon-btn"
-            aria-label="Close"
+            className="rl-icon-btn rl-icon-btn-sm"
+            aria-label="Close menu"
           >
             <X className="h-5 w-5" />
           </button>
         </div>
-        <nav className="space-y-1 p-3" aria-label="More destinations">
-          {items.map((item) => {
-            const Icon = item.icon;
-            const active = isNavActive(item.href, pathname);
-            return (
-              <Link
-                key={item.id}
-                href={item.href}
-                onClick={onClose}
-                aria-current={active ? "page" : undefined}
-                className={clsx(
-                  "flex h-12 cursor-pointer items-center gap-3 rounded-[var(--radius)] px-3 transition-[background-color,color] duration-[var(--duration-fast)] ease-[var(--ease-out)]",
-                  active
-                    ? "bg-[var(--brand-soft)] text-[var(--brand)]"
-                    : "text-[var(--ink)] hover:bg-[var(--surface)]",
-                )}
-              >
-                <Icon className="h-5 w-5 shrink-0" strokeWidth={1.75} aria-hidden />
-                <span className="type-body-sm font-medium">{item.label}</span>
-              </Link>
-            );
-          })}
-        </nav>
-        <div className="border-t border-[var(--border)] p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
-          <SignOutButton className="ui-btn ui-btn-ghost ui-btn-block !justify-start" />
+
+        {items.length > 0 ? (
+          <nav className="space-y-1 p-3" aria-label="Additional destinations">
+            {items.map((item) => {
+              const Icon = item.icon;
+              const active = isNavActive(item.href, pathname);
+              return (
+                <Link
+                  key={item.id}
+                  href={item.href}
+                  onClick={onClose}
+                  aria-current={active ? "page" : undefined}
+                  className={clsx(
+                    "flex h-12 cursor-pointer items-center gap-3.5 rounded-[var(--radius-md)] px-3.5 transition-colors duration-[var(--duration-fast)]",
+                    active
+                      ? "bg-[var(--brand-soft)] font-semibold text-[var(--brand)]"
+                      : "text-[var(--ink)] hover:bg-[var(--surface-subtle)]",
+                  )}
+                >
+                  <Icon
+                    className="h-5 w-5 shrink-0"
+                    strokeWidth={active ? 2.25 : 1.75}
+                    aria-hidden
+                  />
+                  <span className="type-body-sm font-medium">{item.label}</span>
+                </Link>
+              );
+            })}
+          </nav>
+        ) : null}
+
+        <div className="border-t border-[var(--border-subtle)] p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+          <SignOutButton className="rl-btn rl-btn-danger-outline rl-btn-block" />
         </div>
       </div>
     </div>
@@ -354,10 +368,10 @@ export function AppShell({
     [role],
   );
 
-  const byId = useMemo(() => {
-    const map = new Map(navItems.map((item) => [item.id, item]));
-    return map;
-  }, [navItems]);
+  const byId = useMemo(
+    () => new Map(navItems.map((item) => [item.id, item])),
+    [navItems],
+  );
 
   const dockItems = useMemo(() => {
     return DOCK_IDS[role]
@@ -365,13 +379,15 @@ export function AppShell({
       .filter((item): item is NavItem => Boolean(item));
   }, [byId, role]);
 
-  /** Destinations not on the dock — opened from More (staff overflow). */
   const moreItems = useMemo(() => {
     const dockIds = new Set(dockItems.map((i) => i.id));
     return navItems.filter((item) => !dockIds.has(item.id));
   }, [dockItems, navItems]);
 
-  const needsMoreSlot = moreItems.length > 0;
+  const activeNavItem = useMemo(
+    () => navItems.find((item) => isNavActive(item.href, pathname)),
+    [navItems, pathname],
+  );
 
   const ops = isOpsPath(pathname);
 
@@ -379,7 +395,6 @@ export function AppShell({
     setMoreOpen(false);
   }, [pathname]);
 
-  /* Lock document scroll — only #app-main (fund) or ops panes scroll. */
   useEffect(() => {
     const html = document.documentElement;
     const { overflow: prevHtmlOverflow, height: prevHtmlHeight } = html.style;
@@ -400,45 +415,73 @@ export function AppShell({
   const moreActive =
     moreOpen || moreItems.some((item) => isNavActive(item.href, pathname));
 
+  const desktopMode = collapsed ? "rail" : "full";
+
   return (
     <div className="flex h-dvh max-h-dvh overflow-hidden bg-[var(--app-chrome)]">
-      <a href="#app-main" className="ui-skip-link">
+      <a href="#app-main" className="rl-skip-link">
         Skip to content
       </a>
 
-      {/* Desktop / tablet: sidebar only */}
+      {/* Tablet Rail (768–1023px) — Sovereign Midnight icon rail */}
+      <aside
+        className="rl-sidebar hidden h-full w-[var(--rail-w)] shrink-0 flex-col md:flex lg:hidden"
+        aria-label="Navigation rail"
+      >
+        <div className="rl-sidebar-header justify-center px-2">
+          <div className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-md)] bg-white/95 shadow-sm">
+            <BbbMark size="sm" alt="BBB" />
+          </div>
+        </div>
+        <SidebarNav items={navItems} pathname={pathname} mode="rail" />
+        <div className="mt-auto flex flex-col items-center gap-2 border-t border-white/10 p-3">
+          <SignOutButton
+            className="rl-rail-link w-full justify-center !mb-0 px-0"
+            label=""
+          />
+        </div>
+      </aside>
+
+      {/* Desktop Sidebar (≥1024px) — Sovereign Midnight collapsible navigation */}
       <aside
         className={clsx(
-          "ui-ops-sidebar h-full shrink-0 flex-col transition-[width] duration-[var(--duration-base)] ease-[var(--ease-out)]",
+          "rl-sidebar hidden h-full shrink-0 flex-col transition-[width] duration-[var(--duration-base)] ease-[var(--ease-out)] lg:flex",
           collapsed
             ? "w-[var(--sidebar-w-collapsed)]"
             : "w-[var(--sidebar-w)]",
         )}
+        aria-label="Primary Sidebar"
       >
         <div
           className={clsx(
-            "ui-header shrink-0",
-            collapsed ? "justify-center px-2" : "justify-between px-3",
+            "rl-sidebar-header shrink-0",
+            collapsed ? "justify-center px-2" : "justify-between px-4",
           )}
         >
           {!collapsed ? (
-            <div className="flex min-w-0 items-center gap-2.5">
-              <BbbMark size="md" alt="BBB" />
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius)] bg-white/95 shadow-sm">
+                <BbbMark size="sm" alt="BBB" />
+              </div>
               <div className="min-w-0">
-                <p className="type-body-sm font-semibold text-[var(--ink)]">
-                  BBB
+                <p className="truncate text-sm font-bold tracking-tight text-white">
+                  BBB Ledger
                 </p>
-                <p className="type-caption mt-0.5">{ROLE_LABEL[role]}</p>
+                <p className="truncate text-[11px] font-medium text-white/60">
+                  CPE Sinking Fund
+                </p>
               </div>
             </div>
           ) : (
-            <BbbMark size="sm" alt="BBB" />
+            <div className="flex h-9 w-9 items-center justify-center rounded-[var(--radius)] bg-white/95 shadow-sm">
+              <BbbMark size="sm" alt="BBB" />
+            </div>
           )}
           {!collapsed ? (
             <button
               type="button"
               onClick={() => setCollapsed(true)}
-              className="ui-icon-btn ui-icon-btn-sm"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius)] text-white/60 transition-colors hover:bg-white/10 hover:text-white"
               aria-label="Collapse sidebar"
             >
               <PanelLeftClose className="h-4 w-4" />
@@ -447,11 +490,11 @@ export function AppShell({
         </div>
 
         {collapsed ? (
-          <div className="flex justify-center border-b border-[var(--border)] py-2">
+          <div className="flex justify-center border-b border-white/10 py-2">
             <button
               type="button"
               onClick={() => setCollapsed(false)}
-              className="ui-icon-btn ui-icon-btn-sm"
+              className="inline-flex h-8 w-8 items-center justify-center rounded-[var(--radius)] text-white/60 transition-colors hover:bg-white/10 hover:text-white"
               aria-label="Expand sidebar"
             >
               <PanelLeftOpen className="h-4 w-4" />
@@ -459,36 +502,54 @@ export function AppShell({
           </div>
         ) : null}
 
-        <SidebarNav items={navItems} pathname={pathname} collapsed={collapsed} />
+        <SidebarNav
+          items={navItems}
+          pathname={pathname}
+          mode={desktopMode}
+        />
 
         <div
           className={clsx(
-            "mt-auto space-y-1.5 border-t border-[var(--border)] p-3",
+            "mt-auto space-y-2 border-t border-white/10 p-3",
             collapsed && "flex flex-col items-center",
           )}
         >
           {!collapsed ? (
-            <div className="ui-inset">
-              <p className="type-body-sm truncate font-medium">{loginId}</p>
-              <p className="type-caption mt-1">{ROLE_LABEL[role]}</p>
+            <div className="rounded-[var(--radius-md)] border border-white/10 bg-white/[0.05] px-3 py-2.5">
+              <p className="truncate text-xs font-semibold text-white">
+                {loginId}
+              </p>
+              <p className="mt-0.5 text-[11px] font-medium text-white/60">
+                {ROLE_LABEL[role]}
+              </p>
             </div>
           ) : null}
           <SignOutButton
             className={clsx(
-              "ui-btn ui-btn-ghost justify-start px-2.5 disabled:opacity-50",
-              collapsed && "justify-center px-0",
+              "rl-rail-link w-full !mb-0",
+              collapsed ? "justify-center px-0" : "justify-start",
             )}
             label={collapsed ? "" : "Sign out"}
           />
         </div>
       </aside>
 
+      {/* Main Content Viewport */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        {/* Mobile brand strip — identity only, not a second nav */}
-        <header className="ui-header sticky top-0 z-40 shrink-0 md:hidden">
+        {/* Mobile Top Bar (<768px) */}
+        <header className="rl-header sticky top-0 z-40 shrink-0 md:hidden">
           <div className="flex h-full w-full items-center justify-between gap-3 px-[var(--page-pad-x)]">
-            <BbbWordmark size="md" showTagline={false} />
-            <span className="type-caption shrink-0">{ROLE_LABEL[role]}</span>
+            <div className="flex min-w-0 items-center gap-2.5">
+              <BbbMark size="sm" alt="BBB" />
+              <div className="min-w-0">
+                <p className="truncate text-sm font-bold tracking-tight text-[var(--ink)]">
+                  {activeNavItem?.label ?? "BBB Ledger"}
+                </p>
+              </div>
+            </div>
+            <span className="rl-pill rl-pill-audited">
+              {ROLE_LABEL[role]}
+            </span>
           </div>
         </header>
 
@@ -498,104 +559,68 @@ export function AppShell({
             "flex min-h-0 min-w-0 flex-1 flex-col",
             ops
               ? "overflow-hidden bg-[var(--surface)] pb-[calc(var(--nav-h)+env(safe-area-inset-bottom))] md:pb-0"
-              : "ui-canvas overflow-x-hidden overflow-y-auto",
+              : "rl-canvas overflow-x-hidden overflow-y-auto",
           )}
         >
           {ops ? (
             children
           ) : (
-            <div className="ui-fund-main w-full min-w-0">{children}</div>
+            <div className="rl-fund-main w-full min-w-0">{children}</div>
           )}
         </div>
 
-        {/* Mobile bottom dock */}
+        {/* Mobile Bottom Dock (<768px) */}
         <nav
-          className="ui-nav-dock fixed inset-x-0 bottom-0 z-50 md:hidden"
+          className="rl-nav-dock fixed inset-x-0 bottom-0 z-50 md:hidden"
           aria-label="Primary"
         >
-          <ul className="ui-nav-bottom mx-auto flex max-w-lg items-stretch justify-around gap-0.5 px-1.5">
+          <ul className="rl-nav-bottom mx-auto flex max-w-lg items-stretch justify-around gap-0.5 px-1.5">
             {dockItems.map((item) => {
               const Icon = item.icon;
               const active = isNavActive(item.href, pathname);
-              const isPay = item.id === "pay";
               return (
                 <li key={item.id} className="flex min-w-0 flex-1">
                   <Link
                     href={item.href}
                     aria-current={active ? "page" : undefined}
-                    aria-label={item.label}
                     className={clsx(
-                      "ui-nav-link type-caption cursor-pointer",
-                      isPay && "relative -mt-2.5",
-                      !isPay &&
-                        (active
-                          ? "ui-nav-link-active"
-                          : "text-[var(--ink-muted)]"),
+                      "rl-nav-link cursor-pointer",
+                      active && "rl-nav-link-active",
                     )}
                   >
-                    {isPay ? (
-                      <>
-                        <span
-                          className={clsx(
-                            "ui-nav-pay",
-                            active
-                              ? "bg-[var(--brand-accent)]"
-                              : "bg-[var(--brand)]",
-                          )}
-                        >
-                          <Icon
-                            className="h-5 w-5"
-                            strokeWidth={2}
-                            aria-hidden
-                          />
-                        </span>
-                        <span
-                          className={clsx(
-                            active
-                              ? "font-semibold text-[var(--brand)]"
-                              : "text-[var(--ink-muted)]",
-                          )}
-                        >
-                          Pay
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <Icon
-                          className="h-5 w-5"
-                          strokeWidth={active ? 2.25 : 1.75}
-                          aria-hidden
-                        />
-                        <span className="truncate">{item.label}</span>
-                      </>
-                    )}
+                    <span className="rl-nav-link-pill">
+                      <Icon
+                        className="h-[19px] w-[19px]"
+                        strokeWidth={active ? 2.25 : 1.75}
+                        aria-hidden
+                      />
+                    </span>
+                    <span className="truncate">{item.label}</span>
                   </Link>
                 </li>
               );
             })}
-            {needsMoreSlot || role === "ADMIN" ? (
-              <li className="flex min-w-0 flex-1">
-                <button
-                  type="button"
-                  onClick={() => setMoreOpen(true)}
-                  aria-expanded={moreOpen}
-                  aria-haspopup="dialog"
-                  className={clsx(
-                    "ui-nav-link type-caption w-full cursor-pointer",
-                    moreActive
-                      ? "ui-nav-link-active"
-                      : "text-[var(--ink-muted)]",
-                  )}
-                >
+            <li className="flex min-w-0 flex-1">
+              <button
+                type="button"
+                onClick={() => setMoreOpen(true)}
+                aria-expanded={moreOpen}
+                aria-haspopup="dialog"
+                className={clsx(
+                  "rl-nav-link cursor-pointer",
+                  moreActive && "rl-nav-link-active",
+                )}
+              >
+                <span className="rl-nav-link-pill">
                   <Ellipsis
-                    className="h-5 w-5"
+                    className="h-[19px] w-[19px]"
                     strokeWidth={moreActive ? 2.25 : 1.75}
                     aria-hidden
                   />
-                  <span>More</span>
-                </button>
-              </li>
-            ) : null}
+                </span>
+                <span>More</span>
+              </button>
+            </li>
           </ul>
           <div className="h-[env(safe-area-inset-bottom)]" />
         </nav>

@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { Loader2, ShieldCheck } from "lucide-react";
 import { bootstrapAdmin } from "@/actions/users";
 import { AuthBrandHero } from "@/components/brand/auth-shell";
 
@@ -36,56 +36,59 @@ export function SetupForm() {
   return (
     <div className="w-full">
       <AuthBrandHero
-        title="Create admin"
-        subtitle="One-time setup · username sign-in"
+        title="Initialize System Admin"
+        subtitle="One-time sovereign ledger provisioning"
       />
 
-      <form onSubmit={onSubmit} className="ui-auth-panel ui-stack-sm">
-        <label className="ui-field">
-          <span className="ui-field-label">Full name</span>
+      <form onSubmit={onSubmit} className="rl-auth-panel rl-stack">
+        <label className="rl-field">
+          <span className="rl-field-label">Administrator full name</span>
           <input
             required
+            placeholder="Juan Dela Cruz"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className="ui-input"
+            className="rl-input"
           />
         </label>
-        <label className="ui-field">
-          <span className="ui-field-label">Username</span>
+        <label className="rl-field">
+          <span className="rl-field-label">Admin username</span>
           <input
             required
             autoComplete="username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            className="ui-input"
+            className="rl-input font-mono"
             placeholder="fundadmin"
           />
         </label>
-        <label className="ui-field">
-          <span className="ui-field-label">Password</span>
-          <input
-            type="password"
-            required
-            autoComplete="new-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="ui-input"
-          />
-        </label>
-        <label className="ui-field">
-          <span className="ui-field-label">Confirm password</span>
-          <input
-            type="password"
-            required
-            autoComplete="new-password"
-            value={confirm}
-            onChange={(e) => setConfirm(e.target.value)}
-            className="ui-input"
-          />
-        </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="rl-field">
+            <span className="rl-field-label">Password</span>
+            <input
+              type="password"
+              required
+              autoComplete="new-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="rl-input"
+            />
+          </label>
+          <label className="rl-field">
+            <span className="rl-field-label">Confirm password</span>
+            <input
+              type="password"
+              required
+              autoComplete="new-password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              className="rl-input"
+            />
+          </label>
+        </div>
 
         {error ? (
-          <p className="ui-alert ui-alert-error" role="alert">
+          <p className="rl-alert rl-alert-error" role="alert">
             {error}
           </p>
         ) : null}
@@ -93,10 +96,14 @@ export function SetupForm() {
         <button
           type="submit"
           disabled={pending}
-          className="ui-btn ui-btn-primary ui-btn-block"
+          className="rl-btn rl-btn-primary rl-btn-lg rl-btn-block mt-1"
         >
-          {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-          {pending ? "Creating…" : "Create admin"}
+          {pending ? (
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          ) : (
+            <ShieldCheck className="h-4 w-4" aria-hidden />
+          )}
+          {pending ? "Provisioning…" : "Create administrator"}
         </button>
       </form>
     </div>

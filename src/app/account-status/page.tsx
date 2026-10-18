@@ -32,14 +32,14 @@ export default async function AccountStatusPage({
           : "No active member profile is linked to this sign-in. Ask an admin to provision your account."
       }
     >
-      <div className="ui-stack items-center">
+      <div className="rl-stack items-center">
         {email ? (
           <p className="type-caption text-center">
             Signed in as{" "}
             <span className="font-medium text-[var(--ink)]">{email}</span>
           </p>
         ) : null}
-        <SignOutButton className="ui-btn ui-btn-primary ui-btn-block" />
+        <SignOutButton className="rl-btn rl-btn-primary rl-btn-block" />
         <p className="type-caption text-center">
           Sign out, then return with a provisioned account.
         </p>

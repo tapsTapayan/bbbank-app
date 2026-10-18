@@ -1,13 +1,24 @@
 export default function DashboardLoading() {
   return (
-    <div className="ui-fund-frame ui-dash animate-pulse" aria-hidden>
-      <div className="space-y-2">
-        <div className="h-7 w-36 rounded-[var(--radius)] bg-[var(--border)]" />
-        <div className="h-4 w-52 rounded-[var(--radius)] bg-[var(--border)]" />
+    <div className="rl-fund-frame animate-pulse" aria-hidden>
+      <div className="space-y-2 border-b border-[var(--border)] pb-4">
+        <div className="h-3.5 w-32 rounded bg-[var(--border)]/70" />
+        <div className="h-8 w-56 rounded bg-[var(--border)]/60" />
+        <div className="h-4 w-72 rounded bg-[var(--border)]/45" />
       </div>
-      <div className="ui-desk h-52 bg-[var(--border)]/50" />
-      <div className="ui-desk h-44 bg-[var(--border)]/40" />
-      <div className="ui-desk h-36 bg-[var(--border)]/40" />
+      <div className="rl-dash-grid">
+        <div className="rl-fund-stack">
+          <div className="h-64 rounded-[var(--radius-lg)] bg-[var(--border)]/60" />
+          <div className="h-52 rounded-[var(--radius-card)] bg-[var(--border)]/45" />
+        </div>
+        <div className="rl-fund-stack">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="h-24 rounded-[var(--radius-card)] bg-[var(--border)]/50" />
+            <div className="h-24 rounded-[var(--radius-card)] bg-[var(--border)]/50" />
+          </div>
+          <div className="h-56 rounded-[var(--radius-card)] bg-[var(--border)]/45" />
+        </div>
+      </div>
     </div>
   );
 }

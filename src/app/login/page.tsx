@@ -18,7 +18,7 @@ export default async function LoginPage() {
     <AuthShell showBrand={false} panel={false}>
       <Suspense
         fallback={
-          <div className="ui-stack items-center text-center">
+          <div className="rl-stack items-center text-center">
             <div className="mb-4">
               {/* Matches AuthBrandHero mark size for layout stability */}
               <span className="inline-block h-20 w-20 rounded-[var(--radius)] bg-[var(--border)]" />

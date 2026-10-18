@@ -21,7 +21,7 @@ export function SignOutButton({
       disabled={pending}
       onClick={() => startTransition(() => signOut())}
       aria-label={text || "Sign out"}
-      className={className ?? "ui-btn ui-btn-primary"}
+      className={className ?? "rl-btn rl-btn-primary"}
     >
       {pending ? (
         <Loader2 className="h-4 w-4 animate-spin" />

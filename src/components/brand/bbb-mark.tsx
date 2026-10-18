@@ -77,7 +77,10 @@ export function BbbWordmark({
             align === "center" && "flex flex-col items-center",
           )}
         >
-          <p className="type-caption leading-snug">{tagline}</p>
+          <p className="type-body-sm font-semibold leading-snug text-[var(--brand)]">
+            BBB
+          </p>
+          <p className="type-caption mt-0.5 leading-snug">{tagline}</p>
         </div>
       ) : null}
     </div>

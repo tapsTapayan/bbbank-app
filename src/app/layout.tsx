@@ -1,21 +1,14 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Mono, Lexend, Source_Sans_3 } from "next/font/google";
+import { IBM_Plex_Mono, Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 
 /**
- * Typography — Corporate Trust (ui-ux-pro-max)
- * Lexend: readable authority for titles / metrics (CPE institutional)
- * Source Sans 3: clear UI body, forms, labels
+ * Typography — Royal Ledger
+ * Plus Jakarta Sans: UI, headings, brand chrome
  * IBM Plex Mono: currency, references, tabular data
  */
-const lexend = Lexend({
-  variable: "--font-lexend",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
-
-const sourceSans = Source_Sans_3({
-  variable: "--font-source-sans",
+const plusJakarta = Plus_Jakarta_Sans({
+  variable: "--font-ui",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700"],
 });
@@ -56,7 +49,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`${lexend.variable} ${sourceSans.variable} ${ibmPlexMono.variable} h-full antialiased`}
+      className={`${plusJakarta.variable} ${ibmPlexMono.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col overflow-x-clip">
         {children}

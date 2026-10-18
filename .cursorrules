@@ -51,7 +51,8 @@
 
 ## Unified App Shell UX Requirements
 - **Single shell** (`AppShell` in route group `(app)`): One chrome for all roles. Role-filtered nav lists fund + ops destinations together — no separate member/console shells.
-- **Adaptive chrome (one pattern per breakpoint)**: `≥768px` collapsible sidebar only; `<768px` brand strip + bottom dock (≤5). Overflow destinations use a More sheet — never hamburger + bottom dock together.
-- **Content regions**: Fund pages use padded canvas scroll; ops pages (`/verify`, `/loans-admin`, `/audit`, `/members`) are full-bleed workstations.
-- **Member fund surfaces**: Heads count, kinsenas due (₱250 × heads), grace deadline, and late-fee breakdown on dashboard, `/pay`, and `/loans`.
+- **Adaptive chrome (one pattern per breakpoint)**: `<768px` brand strip + bottom dock (≤5) + More sheet; `768–1023px` compact icon rail; `≥1024px` collapsible labeled sidebar. Never hamburger + bottom dock together.
+- **Content regions**: Fund pages use padded canvas scroll (`FundCanvas`); ops pages (`/verify`, `/loans-admin`, `/audit`, `/members`, `/passes`, `/kinsenas`, `/cycle`) are full-bleed workstations (`OpsStage` / `SplitView`).
+- **Design system**: Royal Ledger tokens in `src/design/` — logo + royal navy (`#11335d` / `#001529`) only; no cyan accent. Components use `rl-*` utilities + `src/components/system/`.
+- **Member fund surfaces**: Heads count, kinsenas due (₱250 × heads), grace deadline, and late-fee breakdown on dashboard, `/pay`, and `/loans`. Amount-first composition for dues.
 - **Treasurer `/verify`**: Split-screen verification with grace-period check and `₱10/head/day` penalty verification.

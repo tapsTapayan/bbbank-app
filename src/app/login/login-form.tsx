@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { Loader2, ArrowLeft, KeyRound, Lock } from "lucide-react";
 import {
   completeSignIn,
   registerRememberedDevice,
@@ -283,10 +283,9 @@ export function LoginForm() {
 
   if (step === "loading") {
     return (
-      <div className="ui-stack flex w-full flex-col items-center text-center">
-        <AuthBrandHero />
-        <Loader2 className="h-5 w-5 animate-spin text-[var(--brand)]" />
-        <p className="type-body-sm type-muted">Checking session…</p>
+      <div className="rl-auth-panel flex w-full flex-col items-center gap-3 py-12 text-center">
+        <Loader2 className="h-6 w-6 animate-spin text-[var(--brand)]" />
+        <p className="type-body-sm type-muted">Verifying session…</p>
       </div>
     );
   }
@@ -304,20 +303,17 @@ export function LoginForm() {
   if (step === "roster") {
     return (
       <div className="w-full">
-        <AuthBrandHero title="Welcome back" subtitle="Choose an account" />
-        <div className="ui-auth-panel ui-stack-sm">
-          <AccountRoster
-            accounts={accounts}
-            onSelect={onSelectAccount}
-            onRemove={onRemoveAccount}
-            onAddAnother={() => goPassword(null)}
-          />
-          {error ? (
-            <p className="ui-alert ui-alert-error" role="alert">
-              {error}
-            </p>
-          ) : null}
-        </div>
+        <AccountRoster
+          accounts={accounts}
+          onSelect={onSelectAccount}
+          onRemove={onRemoveAccount}
+          onAddAnother={() => goPassword(null)}
+        />
+        {error ? (
+          <p className="rl-alert rl-alert-error mt-4" role="alert">
+            {error}
+          </p>
+        ) : null}
       </div>
     );
   }
@@ -325,25 +321,29 @@ export function LoginForm() {
   if (step === "pin" && selected) {
     return (
       <div className="w-full">
-        <AuthBrandHero showTagline={false} />
-        <div className="ui-auth-panel ui-stack-sm">
+        <AuthBrandHero
+          title={`Hi, ${selected.name.split(" ")[0] ?? selected.name}`}
+          subtitle={selected.loginId}
+        />
+        <div className="rl-auth-panel rl-stack">
           <PinInput
-            title={`Hi, ${selected.name.split(" ")[0] ?? selected.name}`}
-            subtitle="Enter your 6-digit PIN"
+            title="Enter 6-digit PIN"
+            subtitle="Unlock your account on this device"
             value={pin}
             onChange={setPin}
             onComplete={onPinComplete}
             disabled={pending}
             error={error}
           />
-          <div className="ui-stack-sm text-center">
+          <div className="flex flex-col gap-2 border-t border-[var(--border-subtle)] pt-4">
             <button
               type="button"
               disabled={pending}
               onClick={() => goPassword(selected)}
-              className="ui-link"
+              className="rl-btn rl-btn-secondary rl-btn-block"
             >
-              Use password instead
+              <KeyRound className="h-4 w-4" aria-hidden />
+              Sign in with password instead
             </button>
             <button
               type="button"
@@ -354,9 +354,10 @@ export function LoginForm() {
                 setPin("");
                 setStep(accounts.length > 0 ? "roster" : "password");
               }}
-              className="ui-btn ui-btn-ghost ui-btn-block"
+              className="rl-btn rl-btn-ghost rl-btn-block"
             >
-              Back to accounts
+              <ArrowLeft className="h-4 w-4" aria-hidden />
+              Switch account
             </button>
           </div>
         </div>
@@ -367,37 +368,39 @@ export function LoginForm() {
   return (
     <div className="w-full">
       <AuthBrandHero
-        title="Sign in"
-        subtitle="Email for members · username for staff"
+        title="Sign in to BBB"
+        subtitle="Enter your member email or staff username"
       />
 
-      <form onSubmit={onPasswordSubmit} className="ui-auth-panel ui-stack-sm">
-        <label className="ui-field">
-          <span className="ui-field-label">Email or username</span>
+      <form onSubmit={onPasswordSubmit} className="rl-auth-panel rl-stack">
+        <label className="rl-field">
+          <span className="rl-field-label">Email or username</span>
           <input
             type="text"
             autoComplete="username"
             required
+            placeholder="you@example.com or staff username"
             value={identifier}
             readOnly={identifierLocked}
             onChange={(e) => setIdentifier(e.target.value)}
-            className="ui-input"
+            className="rl-input"
           />
         </label>
-        <label className="ui-field">
-          <span className="ui-field-label">Password</span>
+        <label className="rl-field">
+          <span className="rl-field-label">Password</span>
           <input
             type="password"
             autoComplete="current-password"
             required
+            placeholder="••••••••"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="ui-input"
+            className="rl-input"
           />
         </label>
 
         {error ? (
-          <p className="ui-alert ui-alert-error" role="alert">
+          <p className="rl-alert rl-alert-error" role="alert">
             {error}
           </p>
         ) : null}
@@ -405,25 +408,32 @@ export function LoginForm() {
         <button
           type="submit"
           disabled={pending}
-          className="ui-btn ui-btn-primary ui-btn-block"
+          className="rl-btn rl-btn-primary rl-btn-lg rl-btn-block mt-1"
         >
-          {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+          {pending ? (
+            <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          ) : (
+            <Lock className="h-4 w-4" aria-hidden />
+          )}
           {pending ? "Signing in…" : "Sign in"}
         </button>
-      </form>
 
-      {accounts.length > 0 ? (
-        <button
-          type="button"
-          onClick={() => {
-            setError(null);
-            setStep("roster");
-          }}
-          className="ui-link mt-4 w-full text-center"
-        >
-          Saved accounts
-        </button>
-      ) : null}
+        {accounts.length > 0 ? (
+          <div className="border-t border-[var(--border-subtle)] pt-3">
+            <button
+              type="button"
+              onClick={() => {
+                setError(null);
+                setStep("roster");
+              }}
+              className="rl-btn rl-btn-ghost rl-btn-block"
+            >
+              <ArrowLeft className="h-4 w-4" aria-hidden />
+              Back to saved accounts ({accounts.length})
+            </button>
+          </div>
+        ) : null}
+      </form>
     </div>
   );
 }

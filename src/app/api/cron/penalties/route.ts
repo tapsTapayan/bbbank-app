@@ -7,9 +7,6 @@ import {
   type RejectedPenaltyWindow,
 } from "@/lib/finance/cpe-policy";
 
-export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
-
 /**
  * Daily CPE Rule #3 penalty accrual.
  *

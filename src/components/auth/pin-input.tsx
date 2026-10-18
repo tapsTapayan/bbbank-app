@@ -20,27 +20,26 @@ export type PinInputProps = {
   error?: string | null;
   title: string;
   subtitle?: string;
-  /**
-   * Force layout. Default (`auto`): mobile/tablet numpad; desktop OTP boxes
-   * from the `xl` breakpoint (1280px) so iPads keep the phone-style pad.
-   */
   variant?: "auto" | "numpad" | "otp";
   autoFocus?: boolean;
 };
 
 function DigitsDisplay({ value }: { value: string }) {
   return (
-    <div className="mb-6 flex items-center justify-center gap-3" aria-hidden>
-      {Array.from({ length: PIN_LENGTH }).map((_, i) => (
-        <span
-          key={i}
-          className={`h-3 w-3 rounded-full border transition ${
-            i < value.length
-              ? "border-[var(--brand-accent)] bg-[var(--brand-accent)]"
-              : "border-[var(--border)] bg-transparent"
-          }`}
-        />
-      ))}
+    <div className="mb-6 flex items-center justify-center gap-3.5" aria-hidden>
+      {Array.from({ length: PIN_LENGTH }).map((_, i) => {
+        const filled = i < value.length;
+        return (
+          <span
+            key={i}
+            className={`h-3.5 w-3.5 rounded-full border-2 transition-all duration-150 ${
+              filled
+                ? "scale-110 border-[var(--brand)] bg-[var(--brand)] shadow-[0_0_0_3px_color-mix(in_oklab,var(--brand)_18%,transparent)]"
+                : "border-[var(--border-strong)] bg-[var(--surface-subtle)]"
+            }`}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -69,7 +68,7 @@ function NumpadPad({
   }
 
   return (
-    <div className="grid grid-cols-3 gap-2">
+    <div className="grid grid-cols-3 gap-2.5">
       {KEYS.map((key, index) => {
         if (key === "") {
           return <span key={`empty-${index}`} />;
@@ -81,8 +80,8 @@ function NumpadPad({
               type="button"
               disabled={disabled}
               onClick={backspace}
-              aria-label="Delete"
-              className="flex h-14 items-center justify-center rounded-[var(--radius)] text-[var(--ink)] hover:bg-[var(--surface)] disabled:opacity-50"
+              aria-label="Delete digit"
+              className="flex h-14 cursor-pointer items-center justify-center rounded-[var(--radius-md)] border border-transparent text-[var(--ink-secondary)] transition hover:bg-[var(--surface-hover)] active:scale-95 disabled:opacity-45"
             >
               <Delete className="h-5 w-5" />
             </button>
@@ -94,7 +93,7 @@ function NumpadPad({
             type="button"
             disabled={disabled}
             onClick={() => pushDigit(key)}
-            className="flex h-14 items-center justify-center rounded-[var(--radius)] type-title text-[var(--ink)] hover:bg-[var(--surface)] disabled:opacity-50"
+            className="flex h-14 cursor-pointer items-center justify-center rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-subtle)] font-mono text-lg font-semibold text-[var(--ink)] shadow-2xs transition hover:border-[var(--brand)] hover:bg-[var(--brand-soft)] active:scale-95 disabled:opacity-45"
           >
             {key}
           </button>
@@ -125,7 +124,6 @@ function OtpBoxes({
 
   useEffect(() => {
     if (!autoFocus || disabled) return;
-    // Match Tailwind `xl` — tablets stay on the numpad path.
     const mq = window.matchMedia("(min-width: 1280px)");
     if (!mq.matches) return;
     const firstEmpty = Math.min(value.length, PIN_LENGTH - 1);
@@ -198,7 +196,7 @@ function OtpBoxes({
 
   return (
     <div
-      className="flex items-center justify-center gap-2 sm:gap-3"
+      className="flex items-center justify-center gap-2.5"
       role="group"
       aria-labelledby={labelledBy}
     >
@@ -208,7 +206,7 @@ function OtpBoxes({
           ref={(el) => {
             inputsRef.current[index] = el;
           }}
-          type="text"
+          type="password"
           inputMode="numeric"
           autoComplete={index === 0 ? "one-time-code" : "off"}
           pattern="\d*"
@@ -227,16 +225,13 @@ function OtpBoxes({
           onKeyDown={(e) => onKeyDown(index, e)}
           onPaste={onPaste}
           onFocus={(e) => e.target.select()}
-          className="h-12 w-10 rounded-[var(--radius)] border border-[var(--border)] bg-[var(--surface-elevated)] text-center type-title text-[var(--ink)] shadow-none transition focus:border-[var(--brand-accent)] focus:outline-none focus:ring-[3px] focus:ring-[color-mix(in_oklab,var(--brand-accent)_22%,transparent)] disabled:opacity-50 sm:h-14 sm:w-12"
+          className="h-14 w-11 rounded-[var(--radius-md)] border border-[var(--border-strong)] bg-[var(--surface-subtle)] text-center font-mono text-xl font-bold text-[var(--ink)] transition focus:border-[var(--brand)] focus:bg-[var(--surface-elevated)] focus:outline-none focus:ring-[3px] focus:ring-[color-mix(in_oklab,var(--brand)_22%,transparent)] disabled:opacity-50"
         />
       ))}
     </div>
   );
 }
 
-/**
- * Responsive PIN entry: mobile numpad + dots; desktop 6-box OTP (no numpad).
- */
 export function PinInput({
   value,
   onChange,
@@ -254,21 +249,23 @@ export function PinInput({
 
   return (
     <div className="w-full">
-      <div className="mb-6 text-center">
-        <h2 id={titleId} className="type-heading">
+      <div className="mb-5 text-center">
+        <h2 id={titleId} className="type-title">
           {title}
         </h2>
         {subtitle ? (
-          <p className="type-body-sm type-muted mt-2">{subtitle}</p>
+          <p className="type-caption mt-1">{subtitle}</p>
         ) : null}
       </div>
 
       {error ? (
-        <p className="ui-alert ui-alert-error mb-4 text-center">{error}</p>
+        <p className="rl-alert rl-alert-error mb-4 justify-center text-center">
+          {error}
+        </p>
       ) : null}
 
       {disabled ? (
-        <div className="mb-4 flex justify-center text-[var(--ink-muted)]">
+        <div className="mb-4 flex justify-center text-[var(--brand)]">
           <Loader2 className="h-5 w-5 animate-spin" />
         </div>
       ) : null}
@@ -301,5 +298,4 @@ export function PinInput({
   );
 }
 
-/** @deprecated Use PinInput — kept as alias for existing imports. */
 export const PinPad = PinInput;

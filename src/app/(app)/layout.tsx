@@ -23,7 +23,7 @@ export default async function AppLayout({
   if (!auth.ok) {
     return (
       <div className="flex h-dvh items-center justify-center bg-[var(--surface)] type-body-sm type-muted">
-        Checking access
+        Checking access…
       </div>
     );
   }

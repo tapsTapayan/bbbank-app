@@ -7,7 +7,6 @@ type ReceiptPreviewProps = {
   src: string;
   alt: string;
   referenceNumber: string;
-  /** OCR-extracted ref for match badge (omit when unavailable). */
   aiExtractedRefNo?: string | null;
 };
 
@@ -22,8 +21,10 @@ export function ReceiptPreview({
   const dragging = useRef(false);
   const lastPoint = useRef({ x: 0, y: 0 });
 
-  const zoomIn = () => setScale((s) => Math.min(3, Number((s + 0.25).toFixed(2))));
-  const zoomOut = () => setScale((s) => Math.max(0.5, Number((s - 0.25).toFixed(2))));
+  const zoomIn = () =>
+    setScale((s) => Math.min(3, Number((s + 0.25).toFixed(2))));
+  const zoomOut = () =>
+    setScale((s) => Math.max(0.5, Number((s - 0.25).toFixed(2))));
   const resetView = () => {
     setScale(1);
     setOffset({ x: 0, y: 0 });
@@ -47,33 +48,33 @@ export function ReceiptPreview({
     dragging.current = false;
   }, []);
 
+  const ocrMatch =
+    aiExtractedRefNo &&
+    aiExtractedRefNo.trim().toUpperCase() ===
+      referenceNumber.trim().toUpperCase();
+
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-2.5">
+    <div className="flex h-full min-h-0 flex-1 flex-col">
+      <div className="rl-ops-toolbar">
         <div className="min-w-0">
-          <p className="text-xs font-medium uppercase tracking-wide text-[var(--ink-muted)]">
-            Receipt preview
-          </p>
-          <p className="truncate font-mono text-sm font-semibold text-[var(--ink)]">
-            Ref: {referenceNumber}
-          </p>
+          <p className="type-label">Receipt Evidence</p>
         </div>
         <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={zoomOut}
-            className="ui-icon-btn !h-9 !w-9 !min-h-9 !min-w-9"
+            className="rl-icon-btn rl-icon-btn-sm"
             aria-label="Zoom out"
           >
             <ZoomOut className="h-4 w-4" />
           </button>
-          <span className="min-w-[3rem] text-center type-caption tabular-nums">
+          <span className="min-w-[3.25rem] text-center font-mono text-xs font-semibold tabular-nums text-[var(--ink-secondary)]">
             {Math.round(scale * 100)}%
           </span>
           <button
             type="button"
             onClick={zoomIn}
-            className="ui-icon-btn !h-9 !w-9 !min-h-9 !min-w-9"
+            className="rl-icon-btn rl-icon-btn-sm"
             aria-label="Zoom in"
           >
             <ZoomIn className="h-4 w-4" />
@@ -81,8 +82,8 @@ export function ReceiptPreview({
           <button
             type="button"
             onClick={resetView}
-            className="ui-icon-btn !h-9 !w-9 !min-h-9 !min-w-9"
-            aria-label="Reset view"
+            className="rl-icon-btn rl-icon-btn-sm"
+            aria-label="Reset zoom"
           >
             <Maximize2 className="h-4 w-4" />
           </button>
@@ -90,22 +91,22 @@ export function ReceiptPreview({
       </div>
 
       <div
-        className="relative min-h-0 flex-1 cursor-grab overflow-hidden bg-[var(--app-chrome)] active:cursor-grabbing"
+        className="relative min-h-[260px] flex-1 cursor-grab overflow-hidden bg-[#071526] active:cursor-grabbing"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerLeave={onPointerUp}
       >
-        <div className="pointer-events-none absolute left-3 top-3 z-10 flex items-center gap-1.5 rounded-[var(--radius)] bg-black/55 px-2 py-1 type-caption text-white">
-          <Move className="h-3.5 w-3.5" />
+        <div className="pointer-events-none absolute left-3 top-3 z-10 flex items-center gap-1.5 rounded-full border border-white/15 bg-black/55 px-2.5 py-1 text-[11px] font-medium text-white/90 backdrop-blur-xs">
+          <Move className="h-3 w-3" />
           Drag to pan
         </div>
-        {/* eslint-disable-next-line @next/next/no-img-element -- mock data URLs; next/image not suitable */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={src}
           alt={alt}
           draggable={false}
-          className="absolute left-1/2 top-1/2 max-h-[90%] max-w-[90%] select-none object-contain shadow-lg"
+          className="absolute left-1/2 top-1/2 max-h-[92%] max-w-[92%] select-none object-contain shadow-2xl"
           style={{
             transform: `translate(calc(-50% + ${offset.x}px), calc(-50% + ${offset.y}px)) scale(${scale})`,
             transformOrigin: "center center",
@@ -114,29 +115,25 @@ export function ReceiptPreview({
       </div>
 
       <div className="border-t border-[var(--border)] bg-[var(--surface-elevated)] px-4 py-3">
-        <label className="ui-field-label">Reference number check</label>
-        <div className="mt-2 flex items-center gap-2">
-          <code className="flex h-11 flex-1 items-center rounded-[var(--radius)] bg-[var(--surface)] px-3 font-mono type-body-sm text-[var(--ink)] ring-1 ring-[var(--border)]">
-            {referenceNumber}
-          </code>
+        <div className="flex items-center justify-between gap-2">
+          <span className="type-label">Declared Reference</span>
           {aiExtractedRefNo ? (
             <span
               className={
-                aiExtractedRefNo.trim().toUpperCase() ===
-                referenceNumber.trim().toUpperCase()
-                  ? "rounded-[var(--radius)] bg-[var(--success-soft)] px-2.5 py-1 text-xs font-semibold text-[var(--success)]"
-                  : "rounded-[var(--radius)] bg-[var(--warning-soft)] px-2.5 py-1 text-xs font-semibold text-[var(--warning)]"
+                ocrMatch
+                  ? "rl-pill rl-pill-verified"
+                  : "rl-pill rl-pill-pending"
               }
             >
-              {aiExtractedRefNo.trim().toUpperCase() ===
-              referenceNumber.trim().toUpperCase()
-                ? "OCR match"
-                : "OCR differs"}
+              {ocrMatch ? "OCR Match" : "OCR Differs"}
             </span>
           ) : (
-            <span className="type-caption shrink-0">No OCR ref</span>
+            <span className="type-caption">Manual Ref</span>
           )}
         </div>
+        <code className="mt-1.5 flex h-10 w-full items-center rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-subtle)] px-3 font-mono text-sm font-bold text-[var(--ink)]">
+          {referenceNumber || "—"}
+        </code>
       </div>
     </div>
   );

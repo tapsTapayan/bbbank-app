@@ -2,7 +2,13 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, TicketCheck } from "lucide-react";
+import {
+  CheckCircle2,
+  History,
+  Loader2,
+  ShieldCheck,
+  TicketCheck,
+} from "lucide-react";
 import {
   waivePenaltyAll,
   waivePenaltyBulk,
@@ -11,6 +17,7 @@ import {
 import { formatPHP } from "@/lib/finance/loan-calculator";
 import { OpsWorkstation } from "@/components/ui/ops-workstation";
 import { EmptyState } from "@/components/ui/empty-state";
+import { Money } from "@/components/ui/money";
 
 export type PassTargetRow = {
   targetType: "CONTRIBUTION" | "LOAN_AMORTIZATION";
@@ -23,7 +30,7 @@ export type PassTargetRow = {
 
 export type PassHistoryRow = {
   id: string;
-  batchId: string;
+  batchId: string | null;
   memberName: string;
   label: string;
   amountWaived: number;
@@ -33,6 +40,10 @@ export type PassHistoryRow = {
   createdAt: string;
 };
 
+function keyOf(row: PassTargetRow) {
+  return `${row.targetType}:${row.targetId}`;
+}
+
 export function PassesWorkspace({
   targets,
   history,
@@ -41,23 +52,27 @@ export function PassesWorkspace({
   history: PassHistoryRow[];
 }) {
   const router = useRouter();
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
   const [reason, setReason] = useState("");
-  const [toast, setToast] = useState<string | null>(null);
-  const [pending, startTransition] = useTransition();
+  const [toast, setToast] = useState<{
+    type: "ok" | "err";
+    text: string;
+  } | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [pending, startTransition] = useTransition();
 
-  const keyOf = (t: PassTargetRow) => `${t.targetType}:${t.targetId}`;
+  const selectedItems = useMemo(
+    () => targets.filter((t) => selectedKeys.has(keyOf(t))),
+    [targets, selectedKeys],
+  );
 
-  const totalSelected = useMemo(() => {
-    return targets
-      .filter((t) => selected.has(keyOf(t)))
-      .reduce((s, t) => s + t.penaltyAmount, 0);
-  }, [targets, selected]);
+  const totalSelectedWaived = useMemo(
+    () => selectedItems.reduce((sum, item) => sum + item.penaltyAmount, 0),
+    [selectedItems],
+  );
 
-  function toggle(row: PassTargetRow) {
-    const key = keyOf(row);
-    setSelected((prev) => {
+  function toggleOne(key: string) {
+    setSelectedKeys((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
@@ -65,260 +80,350 @@ export function PassesWorkspace({
     });
   }
 
-  function requireReason(): boolean {
-    if (reason.trim().length < 3) {
-      setToast("Enter a reason (e.g. payroll delayed).");
-      return false;
+  function toggleAll() {
+    if (selectedItems.length === targets.length) {
+      setSelectedKeys(new Set());
+    } else {
+      setSelectedKeys(new Set(targets.map(keyOf)));
     }
-    return true;
   }
 
-  function run(
-    action: () => Promise<{
-      success: boolean;
-      error?: string;
-      message?: string;
-    }>,
-  ) {
+  function requireReason(): string | null {
+    const trimmed = reason.trim();
+    if (trimmed.length < 3) {
+      setToast({
+        type: "err",
+        text: "Enter a brief reason (at least 3 characters) before granting a pass.",
+      });
+      return null;
+    }
+    return trimmed;
+  }
+
+  function grantSingle(row: PassTargetRow) {
+    const r = requireReason();
+    if (!r) return;
     startTransition(async () => {
-      const result = await action();
-      if (!result.success) {
-        setToast(result.error ?? "Failed.");
+      const res = await waivePenaltySingle({
+        targetType: row.targetType,
+        targetId: row.targetId,
+        reason: r,
+      });
+      if (!res.success) {
+        setToast({ type: "err", text: res.error });
         return;
       }
-      setToast(result.message ?? "Pass granted.");
-      setSelected(new Set());
-      setReason("");
+      setToast({ type: "ok", text: res.message ?? "Pass granted." });
+      router.refresh();
+    });
+  }
+
+  function grantSelected() {
+    const r = requireReason();
+    if (!r || selectedItems.length === 0) return;
+    startTransition(async () => {
+      const res = await waivePenaltyBulk({
+        targets: selectedItems.map((i) => ({
+          targetType: i.targetType,
+          targetId: i.targetId,
+        })),
+        reason: r,
+      });
+      if (!res.success) {
+        setToast({ type: "err", text: res.error });
+        return;
+      }
+      setToast({ type: "ok", text: res.message ?? "Bulk pass granted." });
+      setSelectedKeys(new Set());
+      router.refresh();
+    });
+  }
+
+  function grantAll() {
+    const r = requireReason();
+    if (!r) return;
+    startTransition(async () => {
+      const res = await waivePenaltyAll({
+        reason: r,
+        includeContributions: true,
+        includeLoans: true,
+      });
+      if (!res.success) {
+        setToast({ type: "err", text: res.error });
+        return;
+      }
+      setToast({ type: "ok", text: res.message ?? "All late fees waived." });
+      setSelectedKeys(new Set());
       router.refresh();
     });
   }
 
   return (
     <OpsWorkstation
-      title="Penalty passes"
-      description="Waive late fees"
-      bodyClassName="ui-stack"
+      title="Penalty Passes & Waivers"
+      description="Grant authorized CPE Rule #3 late-fee waivers and freeze accrual"
       actions={
-        <button
-          type="button"
-          className="ui-btn ui-btn-ghost"
-          onClick={() => setShowHistory((v) => !v)}
-        >
-          {showHistory ? "Hide history" : "Show history"}
-        </button>
+        <>
+          <span className="rl-pill rl-pill-pending">
+            {targets.length} open late fees
+          </span>
+          {history.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setShowHistory((s) => !s)}
+              className="rl-btn rl-btn-secondary rl-btn-sm"
+            >
+              <History className="h-3.5 w-3.5" aria-hidden />
+              {showHistory ? "Hide" : "Pass History"} ({history.length})
+            </button>
+          ) : null}
+        </>
       }
     >
-      {toast ? (
-        <p className="ui-alert ui-alert-info mb-4" role="status">
-          {toast}
-        </p>
-      ) : null}
-
-      <div className="ui-desk ui-desk-col mb-4">
-        <section className="ui-desk-section">
-          <label className="ui-field max-w-xl">
-            <span className="ui-field-label">Reason (required)</span>
-            <input
-              type="text"
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="Payroll delayed — March 15 kinsena"
-              className="ui-input"
-            />
-          </label>
-
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={pending || selected.size === 0}
-              className="ui-btn ui-btn-primary"
-              onClick={() => {
-                if (!requireReason()) return;
-                const list = targets.filter((t) => selected.has(keyOf(t)));
-                if (list.length === 1) {
-                  run(() =>
-                    waivePenaltySingle({
-                      targetType: list[0]!.targetType,
-                      targetId: list[0]!.targetId,
-                      reason,
-                    }),
-                  );
-                } else {
-                  run(() =>
-                    waivePenaltyBulk({
-                      targets: list.map((t) => ({
-                        targetType: t.targetType,
-                        targetId: t.targetId,
-                      })),
-                      reason,
-                    }),
-                  );
-                }
-              }}
-            >
-              {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Grant pass on selected ({selected.size}) ·{" "}
-              {formatPHP(totalSelected)}
-            </button>
-            <button
-              type="button"
-              disabled={pending || targets.length === 0}
-              className="ui-btn ui-btn-ghost"
-              onClick={() => {
-                if (!requireReason()) return;
-                if (
-                  !window.confirm(
-                    `Waive late fees on all ${targets.length} open obligations?`,
-                  )
-                ) {
-                  return;
-                }
-                run(() =>
-                  waivePenaltyAll({
-                    reason,
-                    includeContributions: true,
-                    includeLoans: true,
-                  }),
-                );
-              }}
-            >
-              Grant pass on all ({targets.length})
-            </button>
+      <div className="rl-stack">
+        {/* Action Bar: Reason Input + Bulk Waiver Action */}
+        <section className="rl-desk rl-desk-section">
+          <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
+            <label className="rl-field">
+              <span className="rl-field-label">
+                Waiver Reason (Recorded on Pass Audit Log)
+              </span>
+              <input
+                type="text"
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="e.g. Approved payroll delay / medical excuse"
+                className="rl-input"
+              />
+            </label>
+            <div className="flex flex-wrap items-center gap-2">
+              {targets.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={toggleAll}
+                  className="rl-btn rl-btn-secondary"
+                >
+                  {selectedItems.length === targets.length
+                    ? "Clear Selection"
+                    : `Select All (${targets.length})`}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                disabled={pending || selectedItems.length === 0}
+                onClick={grantSelected}
+                className="rl-btn rl-btn-primary"
+              >
+                {pending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <TicketCheck className="h-4 w-4" />
+                )}
+                Grant Selected ({selectedItems.length} ·{" "}
+                {formatPHP(totalSelectedWaived)})
+              </button>
+              {targets.length > 0 ? (
+                <button
+                  type="button"
+                  disabled={pending}
+                  onClick={grantAll}
+                  className="rl-btn rl-btn-secondary"
+                >
+                  Waive All Open
+                </button>
+              ) : null}
+            </div>
           </div>
-        </section>
-      </div>
 
-      {targets.length === 0 ? (
-        <EmptyState
-          icon={<TicketCheck className="h-5 w-5" aria-hidden />}
-          title="No open late fees"
-        />
-      ) : (
-        <div className="ui-desk ui-desk-col min-h-0 flex-1 overflow-auto">
-          <ul className="ui-data-cards mb-4 p-3 md:p-4">
-            {targets.map((row) => {
-              const key = keyOf(row);
-              const checked = selected.has(key);
-              return (
-                <li key={key}>
-                  <label className="ui-data-card flex cursor-pointer gap-3">
-                    <input
-                      type="checkbox"
-                      className="mt-1 h-5 w-5"
-                      checked={checked}
-                      onChange={() => toggle(row)}
-                    />
-                    <span className="min-w-0 flex-1">
-                      <span className="type-body-sm font-medium block">
-                        {row.memberName}
+          {toast ? (
+            <p
+              className={`rl-alert ${
+                toast.type === "ok" ? "rl-alert-ok" : "rl-alert-error"
+              }`}
+              role="status"
+            >
+              {toast.text}
+            </p>
+          ) : null}
+        </section>
+
+        {targets.length === 0 ? (
+          <EmptyState
+            icon={<CheckCircle2 className="h-5 w-5" aria-hidden />}
+            title="Zero Late Penalties"
+            description="No unpaid obligations currently have accrued late penalties."
+          />
+        ) : (
+          <>
+            {/* Mobile Card List */}
+            <div className="space-y-2.5 md:hidden">
+              {targets.map((row) => {
+                const k = keyOf(row);
+                const checked = selectedKeys.has(k);
+                return (
+                  <div key={k} className="rl-card rl-card-pad">
+                    <div className="flex items-start justify-between gap-2">
+                      <label className="flex min-w-0 items-start gap-2.5">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleOne(k)}
+                          className="mt-1 h-4 w-4 rounded border-[var(--border)] accent-[var(--brand)]"
+                        />
+                        <div className="min-w-0">
+                          <p className="type-body-sm truncate font-semibold">
+                            {row.memberName}
+                          </p>
+                          <p className="type-caption truncate">{row.label}</p>
+                        </div>
+                      </label>
+                      <span className="rl-pill rl-pill-rejected font-mono">
+                        +{formatPHP(row.penaltyAmount)}
                       </span>
-                      <span className="type-caption mt-1 block">{row.label}</span>
-                      <span className="type-title mt-2 block tabular-nums">
-                        {formatPHP(row.penaltyAmount)}
-                      </span>
-                      <span className="type-caption mt-1 block">
+                    </div>
+
+                    <div className="mt-3 flex items-center justify-between border-t border-[var(--border-subtle)] pt-3">
+                      <span className="type-caption font-mono">
                         Due{" "}
                         {new Date(row.dueDate).toLocaleDateString("en-PH", {
                           month: "short",
                           day: "numeric",
+                          year: "numeric",
                           timeZone: "UTC",
                         })}
                       </span>
-                    </span>
-                  </label>
-                </li>
-              );
-            })}
-          </ul>
-          <div className="ui-data-table">
-          <table className="w-full text-left type-body-sm">
-            <thead className="sticky top-0 bg-[var(--surface)] type-caption">
-              <tr className="border-b border-[var(--border)]">
-                <th className="px-2 py-3 w-12">
-                  <span className="sr-only">Select</span>
-                </th>
-                <th className="px-2 py-3 font-medium">Member</th>
-                <th className="px-2 py-3 font-medium">Obligation</th>
-                <th className="px-2 py-3 font-medium">Due</th>
-                <th className="px-2 py-3 font-medium">Late fee</th>
-                <th className="px-2 py-3 font-medium">
-                  <span className="sr-only">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {targets.map((row) => {
-                const key = keyOf(row);
-                return (
-                  <tr key={key} className="border-b border-[var(--border)]">
-                    <td className="px-2 py-3">
-                      <input
-                        type="checkbox"
-                        className="h-5 w-5"
-                        checked={selected.has(key)}
-                        onChange={() => toggle(row)}
-                        aria-label={`Select ${row.memberName}`}
-                      />
-                    </td>
-                    <td className="px-2 py-3 font-medium">{row.memberName}</td>
-                    <td className="px-2 py-3">{row.label}</td>
-                    <td className="px-2 py-3 type-caption">
-                      {new Date(row.dueDate).toLocaleDateString("en-PH")}
-                    </td>
-                    <td className="px-2 py-3 tabular-nums font-semibold">
-                      {formatPHP(row.penaltyAmount)}
-                    </td>
-                    <td className="px-2 py-3">
                       <button
                         type="button"
                         disabled={pending}
-                        className="ui-btn ui-btn-ghost"
-                        onClick={() => {
-                          if (!requireReason()) return;
-                          run(() =>
-                            waivePenaltySingle({
-                              targetType: row.targetType,
-                              targetId: row.targetId,
-                              reason,
-                            }),
-                          );
-                        }}
+                        onClick={() => grantSingle(row)}
+                        className="rl-btn rl-btn-secondary rl-btn-sm"
                       >
-                        Pass
+                        <ShieldCheck className="h-3.5 w-3.5" />
+                        Grant Pass
                       </button>
-                    </td>
-                  </tr>
+                    </div>
+                  </div>
                 );
               })}
-            </tbody>
-          </table>
-          </div>
-        </div>
-      )}
+            </div>
 
-      {showHistory ? (
-        <div className="border-t border-[var(--border)] px-[var(--page-pad-x)] py-4">
-          <h2 className="type-title">Pass history</h2>
-          <ul className="mt-3 divide-y divide-[var(--border)]">
-            {history.length === 0 ? (
-              <li className="type-caption py-3">No passes yet.</li>
-            ) : (
-              history.map((h) => (
-                <li key={h.id} className="py-3 type-body-sm">
-                  <p className="font-medium">
-                    {h.memberName} · {formatPHP(h.amountWaived)} · {h.scope}
-                  </p>
-                  <p className="type-caption mt-1">{h.label}</p>
-                  <p className="type-caption mt-1">
-                    {h.reason} · {h.issuedBy} ·{" "}
-                    {new Date(h.createdAt).toLocaleString("en-PH")}
-                  </p>
+            {/* Desktop Data Table */}
+            <div className="hidden overflow-x-auto rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--surface-elevated)] shadow-[var(--shadow-card)] md:block">
+              <table className="rl-table">
+                <thead>
+                  <tr>
+                    <th className="w-10">
+                      <input
+                        type="checkbox"
+                        aria-label="Select all open late penalties"
+                        checked={
+                          targets.length > 0 &&
+                          selectedItems.length === targets.length
+                        }
+                        onChange={toggleAll}
+                        className="h-4 w-4 rounded border-[var(--border)] accent-[var(--brand)]"
+                      />
+                    </th>
+                    <th>Member</th>
+                    <th>Obligation</th>
+                    <th>Due Date</th>
+                    <th className="text-right">Late Penalty</th>
+                    <th className="text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {targets.map((row) => {
+                    const k = keyOf(row);
+                    const checked = selectedKeys.has(k);
+                    return (
+                      <tr key={k}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => toggleOne(k)}
+                            aria-label={`Select ${row.memberName} ${row.label}`}
+                            className="h-4 w-4 rounded border-[var(--border)] accent-[var(--brand)]"
+                          />
+                        </td>
+                        <td className="font-semibold text-[var(--ink)]">
+                          {row.memberName}
+                        </td>
+                        <td className="font-medium text-[var(--ink)]">
+                          {row.label}
+                        </td>
+                        <td className="font-mono text-xs text-[var(--ink-secondary)]">
+                          {new Date(row.dueDate).toLocaleDateString("en-PH", {
+                            month: "short",
+                            day: "numeric",
+                            year: "numeric",
+                            timeZone: "UTC",
+                          })}
+                        </td>
+                        <td className="text-right">
+                          <Money
+                            amount={row.penaltyAmount}
+                            className="font-bold text-[var(--danger)]"
+                          />
+                        </td>
+                        <td className="text-right">
+                          <button
+                            type="button"
+                            disabled={pending}
+                            onClick={() => grantSingle(row)}
+                            className="rl-btn rl-btn-secondary rl-btn-sm"
+                          >
+                            <ShieldCheck className="h-3.5 w-3.5" />
+                            Pass
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {showHistory && history.length > 0 ? (
+          <section className="rl-desk rl-desk-section">
+            <h2 className="type-label">Recent Penalty Passes</h2>
+            <ul className="divide-y divide-[var(--border-subtle)]">
+              {history.map((p) => (
+                <li
+                  key={p.id}
+                  className="flex flex-wrap items-center justify-between gap-2 py-3 text-xs"
+                >
+                  <div>
+                    <span className="font-semibold text-[var(--ink)]">
+                      {p.memberName}
+                    </span>
+                    <span className="text-[var(--ink-muted)]">
+                      {" "}
+                      · {p.label}
+                    </span>
+                    <p className="type-caption">
+                      “{p.reason}” — by {p.issuedBy}
+                    </p>
+                  </div>
+                  <div className="text-right font-mono">
+                    <span className="font-bold text-[var(--success)]">
+                      −{formatPHP(p.amountWaived)}
+                    </span>
+                    <p className="type-caption">
+                      {new Date(p.createdAt).toLocaleDateString("en-PH", {
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </p>
+                  </div>
                 </li>
-              ))
-            )}
-          </ul>
-        </div>
-      ) : null}
+              ))}
+            </ul>
+          </section>
+        ) : null}
+      </div>
     </OpsWorkstation>
   );
 }

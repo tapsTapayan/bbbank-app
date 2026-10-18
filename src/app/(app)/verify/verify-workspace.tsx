@@ -21,6 +21,7 @@ import type { VerifyQueueItem } from "@/lib/queries/pending-submissions";
 import { formatPHP } from "@/lib/finance/loan-calculator";
 import { evaluateAiMatch } from "@/lib/finance/ai-match";
 import { OpsWorkstation } from "@/components/ui/ops-workstation";
+import { SplitView } from "@/components/system/frames/split-view";
 import { ReceiptPreview } from "./receipt-preview";
 
 const channelIcon = {
@@ -100,7 +101,6 @@ export function VerifyWorkspace({
       return;
     }
     void selectItem(first);
-    // Re-sync when the server refreshes the queue after a decision.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialQueue]);
 
@@ -150,32 +150,42 @@ export function VerifyWorkspace({
 
   return (
     <OpsWorkstation
-      title="Verify payments"
-      description="Pending receipts"
+      title="Treasurer Verification Desk"
+      description="Side-by-side receipt & CPE Rule #3 penalty verification"
       padded={false}
       actions={
         <>
-          <span className="ui-pill ui-pill-verified">
+          <span
+            className={
+              pendingItems.length > 0
+                ? "rl-pill rl-pill-pending"
+                : "rl-pill rl-pill-verified"
+            }
+          >
             {pendingItems.length} pending
           </span>
           {toast ? (
-            <p className="ui-alert ui-alert-info !py-2 type-caption" role="status">
+            <p
+              className="rl-alert rl-alert-info !py-1.5 !px-3 type-caption"
+              role="status"
+            >
               {toast}
             </p>
           ) : null}
         </>
       }
     >
+      {/* Mobile Segmented Switcher (<768px) */}
       <div
-        className="flex shrink-0 gap-1 border-b border-[var(--border)] bg-[var(--surface-elevated)] p-2 md:hidden"
+        className="rl-ops-tabs md:hidden"
         role="tablist"
-        aria-label="Verify panes"
+        aria-label="Verification panes"
       >
         {(
           [
-            ["queue", "Queue"],
+            ["queue", `Queue (${pendingItems.length})`],
             ["receipt", "Receipt"],
-            ["decide", "Decide"],
+            ["decide", "Decision"],
           ] as const
         ).map(([id, label]) => (
           <button
@@ -183,10 +193,7 @@ export function VerifyWorkspace({
             type="button"
             role="tab"
             aria-selected={mobilePane === id}
-            className={clsx(
-              "ui-btn ui-btn-sm flex-1 type-caption",
-              mobilePane === id ? "ui-btn-ink" : "ui-btn-ghost",
-            )}
+            className="rl-ops-tab"
             onClick={() => setMobilePane(id)}
           >
             {label}
@@ -194,20 +201,27 @@ export function VerifyWorkspace({
         ))}
       </div>
 
-      <div className="ui-ops-split ui-ops-split--triple min-h-0 flex-1 overflow-auto md:overflow-hidden">
+      <SplitView
+        variant="triple"
+        className="min-h-0 flex-1 overflow-auto md:overflow-hidden"
+      >
+        {/* Pane 1: Pending Queue */}
         <aside
           className={clsx(
-            "ui-ops-pane",
+            "rl-ops-pane",
             mobilePane === "queue" ? "flex" : "hidden md:flex",
           )}
         >
-          <div className="ui-ops-toolbar">
-            <p className="type-label">Queue</p>
+          <div className="rl-ops-toolbar">
+            <p className="type-label">Submissions Queue</p>
+            <span className="type-caption font-mono tabular-nums">
+              {pendingItems.length} open
+            </span>
           </div>
-          <ul className="ui-ops-pane-scroll space-y-2 p-2">
+          <ul className="rl-ops-pane-scroll space-y-2 p-3">
             {pendingItems.length === 0 ? (
-              <li className="ui-inset py-10 text-center type-body-sm type-muted">
-                Queue clear — no pending receipts.
+              <li className="rl-inset py-12 text-center type-body-sm type-muted">
+                Queue clear — all submissions verified.
               </li>
             ) : null}
             {pendingItems.map((item) => {
@@ -219,24 +233,24 @@ export function VerifyWorkspace({
                     type="button"
                     onClick={() => void selectItem(item)}
                     aria-current={active ? "true" : undefined}
-                    className={clsx("ui-ops-row", active && "is-selected")}
+                    className={clsx("rl-ops-row", active && "is-selected")}
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="type-body-sm truncate font-medium">
+                    <div className="flex w-full items-start justify-between gap-2">
+                      <p className="type-body-sm truncate font-semibold">
                         {item.memberName}
                       </p>
-                      <span className="type-caption shrink-0 font-semibold tabular-nums text-[var(--ink)]">
+                      <span className="font-mono text-sm font-bold shrink-0 tabular-nums text-[var(--ink)]">
                         {formatPHP(item.amount)}
                       </span>
                     </div>
-                    <p className="type-caption mt-1 truncate">
-                      {item.targetLabel}
-                    </p>
-                    <div className="mt-2 flex items-center gap-2 type-caption">
-                      <Icon className="h-3.5 w-3.5" aria-hidden />
-                      <span>{item.paymentChannel.replace("_", " ")}</span>
-                      <Clock className="ml-auto h-3.5 w-3.5" aria-hidden />
-                      <span>
+                    <p className="type-caption truncate">{item.targetLabel}</p>
+                    <div className="mt-1.5 flex w-full items-center gap-2 type-caption">
+                      <span className="inline-flex items-center gap-1 rounded bg-[var(--surface-subtle)] px-1.5 py-0.5 font-mono text-[11px] font-semibold text-[var(--ink-secondary)]">
+                        <Icon className="h-3 w-3" aria-hidden />
+                        {item.paymentChannel.replace("_", " ")}
+                      </span>
+                      <span className="ml-auto inline-flex items-center gap-1 font-mono text-[11px]">
+                        <Clock className="h-3 w-3" aria-hidden />
                         {new Date(item.submittedAt).toLocaleTimeString(
                           "en-PH",
                           {
@@ -253,9 +267,10 @@ export function VerifyWorkspace({
           </ul>
         </aside>
 
+        {/* Pane 2: High-Contrast Receipt Inspection */}
         <section
           className={clsx(
-            "ui-ops-pane min-h-[280px] bg-[var(--surface)] sm:min-h-[360px]",
+            "rl-ops-pane min-h-[320px] bg-[var(--surface)]",
             mobilePane === "receipt" ? "flex" : "hidden md:flex",
           )}
         >
@@ -267,14 +282,12 @@ export function VerifyWorkspace({
               aiExtractedRefNo={selected.aiExtractedRefNo}
             />
           ) : selected && !selected.receiptStoragePath ? (
-            <div className="flex h-full min-h-[240px] flex-col items-center justify-center gap-3 px-6 text-center">
-              <div className="ui-ops-empty-icon">
+            <div className="flex h-full min-h-[260px] flex-col items-center justify-center gap-3 px-6 text-center">
+              <div className="rl-ops-empty-icon">
                 <Building2 className="h-5 w-5" aria-hidden />
               </div>
-              <p className="type-body-sm font-medium">
-                Cash · no receipt image
-              </p>
-              <p className="type-metric tabular-nums tracking-tight">
+              <p className="type-title">Cash Payment Attestation</p>
+              <p className="type-metric tabular-nums">
                 {new Date(selected.paidAt).toLocaleDateString("en-PH", {
                   month: "short",
                   day: "numeric",
@@ -282,85 +295,72 @@ export function VerifyWorkspace({
                   timeZone: "UTC",
                 })}
               </p>
-              <p className="type-caption max-w-xs">
-                Member attested this payment date. Confirm with your cash log
-                before verifying.
+              <p className="type-caption max-w-xs leading-relaxed">
+                Member declared a physical cash payment on this date. Confirm against the Treasurer cash logbook before approving.
               </p>
             </div>
           ) : selected ? (
-            <div className="flex h-full min-h-[240px] items-center justify-center type-body-sm type-muted">
-              Loading signed receipt…
+            <div className="flex h-full min-h-[260px] flex-col items-center justify-center gap-2 type-body-sm type-muted">
+              <Loader2 className="h-5 w-5 animate-spin text-[var(--brand)]" />
+              <span>Loading encrypted receipt…</span>
             </div>
           ) : (
-            <div className="ui-ops-empty">
-              <div className="ui-ops-empty-icon">
+            <div className="rl-ops-empty">
+              <div className="rl-ops-empty-icon">
                 <CheckCircle2 className="h-5 w-5" aria-hidden />
               </div>
-              <p className="type-body-sm font-medium">Select a submission</p>
+              <p className="type-title">Select a submission</p>
               <p className="type-caption max-w-xs">
-                Choose a pending receipt from the queue to review side by side.
+                Choose a pending receipt from the queue to verify side by side.
               </p>
             </div>
           )}
         </section>
 
+        {/* Pane 3: Verification Telemetry & Decision Controls */}
         <aside
           className={clsx(
-            "ui-ops-pane",
+            "rl-ops-pane",
             mobilePane === "decide" ? "flex" : "hidden md:flex",
           )}
         >
-          <div className="ui-ops-toolbar">
-            <p className="type-label">Decision</p>
+          <div className="rl-ops-toolbar">
+            <p className="type-label">Verification & Decision</p>
+            {selected ? (
+              <span className="type-caption font-mono">
+                {selected.memberHeadsCount}H
+              </span>
+            ) : null}
           </div>
 
           {selected ? (
             <div className="flex min-h-0 flex-1 flex-col">
-              <div className="ui-ops-pane-scroll ui-stack p-4">
-                <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-1">
+              <div className="rl-ops-pane-scroll rl-stack p-4">
+                <div className="grid gap-3">
                   <AiMatchBadge item={selected} />
                   <CpePenaltyBadge item={selected} />
                 </div>
 
-                <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-                  <div>
-                    <dt className="type-caption">Member</dt>
-                    <dd className="type-body-sm mt-1 font-medium">
+                <dl className="grid grid-cols-2 gap-3 rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--surface-subtle)] p-3.5">
+                  <div className="col-span-2">
+                    <dt className="type-label">Member</dt>
+                    <dd className="type-body-sm mt-0.5 font-semibold">
                       {selected.memberName}
                     </dd>
-                    <dd className="type-caption mt-1">
+                    <dd className="type-caption">
                       {selected.memberEmail} · {selected.memberHeadsCount} head
                       {selected.memberHeadsCount === 1 ? "" : "s"}
                     </dd>
                   </div>
                   <div>
-                    <dt className="type-caption">Target</dt>
-                    <dd className="type-body-sm mt-1 font-medium">
+                    <dt className="type-label">Target Obligation</dt>
+                    <dd className="type-body-sm mt-0.5 font-medium">
                       {selected.targetLabel}
                     </dd>
-                    <dd className="type-caption mt-1">
-                      {selected.targetType.replace("_", " ")}
-                    </dd>
                   </div>
                   <div>
-                    <dt className="type-caption">Submitted amount</dt>
-                    <dd className="type-body-sm mt-1 tabular-nums font-medium">
-                      {formatPHP(selected.amount)}
-                    </dd>
-                    {selected.aiExtractedAmount != null ? (
-                      <dd className="type-caption mt-1">
-                        OCR {formatPHP(selected.aiExtractedAmount)}
-                        {Math.abs(
-                          selected.amount - selected.aiExtractedAmount,
-                        ) > 0.009
-                          ? " · mismatch"
-                          : ""}
-                      </dd>
-                    ) : null}
-                  </div>
-                  <div>
-                    <dt className="type-caption">Payment date</dt>
-                    <dd className="type-body-sm mt-1 font-medium tabular-nums">
+                    <dt className="type-label">Declared Date</dt>
+                    <dd className="type-body-sm mt-0.5 font-mono font-semibold tabular-nums">
                       {new Date(selected.paidAt).toLocaleDateString("en-PH", {
                         month: "short",
                         day: "numeric",
@@ -368,43 +368,34 @@ export function VerifyWorkspace({
                         timeZone: "UTC",
                       })}
                     </dd>
-                    <dd className="type-caption mt-1">
-                      {selected.paymentChannel === "CASH" &&
-                      !selected.receiptStoragePath
-                        ? "Cash attestation · no receipt image"
-                        : "Declared by member"}
-                    </dd>
                   </div>
                 </dl>
 
-                <label className="ui-field" htmlFor="credited-amount">
-                  <span className="ui-field-label">Credited amount (₱)</span>
+                <label className="rl-field" htmlFor="credited-amount">
+                  <span className="rl-field-label">Credited Amount (₱)</span>
                   <input
                     id="credited-amount"
                     type="text"
                     inputMode="decimal"
                     value={creditedAmount}
                     onChange={(e) => setCreditedAmount(e.target.value)}
-                    className="ui-input tabular-nums"
+                    className="rl-input font-mono text-base font-bold tabular-nums"
                   />
-                  <span className="type-caption">
-                    Treasurer may correct OCR / receipt amount before approve.
-                    Partial and advance credits are allowed.
+                  <span className="rl-field-hint">
+                    Adjust if OCR or member entry differs from receipt.
                   </span>
                 </label>
 
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <label className="ui-field" htmlFor="edit-channel">
-                    <span className="ui-field-label">Channel</span>
+                  <label className="rl-field" htmlFor="edit-channel">
+                    <span className="rl-field-label">Channel</span>
                     <select
                       id="edit-channel"
                       value={editChannel}
                       onChange={(e) =>
-                        setEditChannel(
-                          e.target.value as typeof editChannel,
-                        )
+                        setEditChannel(e.target.value as typeof editChannel)
                       }
-                      className="ui-select"
+                      className="rl-select"
                     >
                       <option value="GCASH">GCash</option>
                       <option value="MAYA">Maya / PayMaya</option>
@@ -413,38 +404,40 @@ export function VerifyWorkspace({
                       <option value="CASH">Cash</option>
                     </select>
                   </label>
-                  <label className="ui-field" htmlFor="edit-ref">
-                    <span className="ui-field-label">Reference</span>
+                  <label className="rl-field" htmlFor="edit-ref">
+                    <span className="rl-field-label">Reference No.</span>
                     <input
                       id="edit-ref"
                       type="text"
                       value={editReference}
                       onChange={(e) => setEditReference(e.target.value)}
-                      className="ui-input font-mono"
+                      className="rl-input font-mono text-sm"
                     />
                   </label>
                 </div>
 
-                <label className="ui-field" htmlFor="remarks">
-                  <span className="ui-field-label">Remarks</span>
+                <label className="rl-field" htmlFor="remarks">
+                  <span className="rl-field-label">
+                    Treasurer Remarks (Required to Reject)
+                  </span>
                   <textarea
                     id="remarks"
-                    rows={3}
+                    rows={2}
                     value={remarks}
                     onChange={(e) => setRemarks(e.target.value)}
-                    placeholder="Required to reject"
-                    className="ui-textarea"
+                    placeholder="Reason for rejection or audit note…"
+                    className="rl-textarea"
                   />
                 </label>
               </div>
 
-              <div className="sticky bottom-0 shrink-0 border-t border-[var(--border)] bg-[var(--surface-elevated)] p-4 sm:static">
-                <div className="grid gap-2 sm:grid-cols-2">
+              <div className="sticky bottom-0 shrink-0 border-t border-[var(--border)] bg-[var(--surface-elevated)] p-4">
+                <div className="grid grid-cols-2 gap-2.5">
                   <button
                     type="button"
                     disabled={pending}
                     onClick={() => decide("VERIFIED")}
-                    className="ui-btn ui-btn-success ui-btn-block"
+                    className="rl-btn rl-btn-success rl-btn-block"
                   >
                     {pending ? (
                       <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
@@ -457,7 +450,7 @@ export function VerifyWorkspace({
                     type="button"
                     disabled={pending}
                     onClick={() => decide("REJECTED")}
-                    className="ui-btn ui-btn-danger ui-btn-block"
+                    className="rl-btn rl-btn-danger rl-btn-block"
                   >
                     <XCircle className="h-4 w-4" aria-hidden />
                     Reject
@@ -467,11 +460,11 @@ export function VerifyWorkspace({
             </div>
           ) : (
             <div className="flex flex-1 items-center justify-center p-6 text-center type-body-sm type-muted">
-              Nothing selected
+              No submission selected
             </div>
           )}
         </aside>
-      </div>
+      </SplitView>
     </OpsWorkstation>
   );
 }
@@ -495,29 +488,27 @@ function CpePenaltyBadge({ item }: { item: VerifyQueueItem }) {
   return (
     <div
       className={clsx(
-        "rounded-[var(--radius)] px-3 py-2.5 ring-1",
+        "rounded-[var(--radius-md)] border p-3.5",
         overdue
-          ? "bg-[var(--warning-soft)] text-[var(--warning)] ring-[color-mix(in_oklab,var(--warning)_28%,transparent)]"
-          : item.isCatchUp
-            ? "bg-[var(--brand-soft)] text-[var(--brand)] ring-[color-mix(in_oklab,var(--brand-accent)_35%,transparent)]"
-            : item.isWithinGrace
-              ? "bg-[var(--brand-soft)] text-[var(--brand)] ring-[color-mix(in_oklab,var(--brand-accent)_35%,transparent)]"
-              : "bg-[var(--surface)] text-[var(--ink)] ring-[var(--border)]",
+          ? "border-[var(--warning-border)] bg-[var(--warning-soft)] text-[var(--warning)]"
+          : "border-[var(--brand-border)] bg-[var(--brand-soft)] text-[var(--brand-strong)]",
       )}
     >
-      <div className="flex items-center gap-2 type-body-sm font-semibold">
+      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider">
         {overdue ? (
           <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden />
         ) : (
           <CalendarClock className="h-4 w-4 shrink-0" aria-hidden />
         )}
-        {item.isCatchUp ? "Catch-up late fee check" : "Late fee check"}
+        {item.isCatchUp
+          ? "Catch-Up Late Fee Check"
+          : "CPE Rule #3 Grace & Penalty Check"}
       </div>
-      <dl className="mt-2 space-y-1 type-caption">
+      <dl className="mt-2.5 space-y-1 text-xs">
         {item.obligationTotalRemaining != null ? (
           <div className="flex justify-between gap-2">
-            <dt className="opacity-80">Obligation due</dt>
-            <dd className="font-semibold tabular-nums text-[var(--ink)]">
+            <dt className="opacity-80">Obligation Due</dt>
+            <dd className="font-mono font-bold tabular-nums text-[var(--ink)]">
               {formatPHP(item.obligationTotalRemaining)}
               {item.obligationBaseRemaining != null && item.penaltyAmount > 0
                 ? ` (${formatPHP(item.obligationBaseRemaining)} + late)`
@@ -526,54 +517,36 @@ function CpePenaltyBadge({ item }: { item: VerifyQueueItem }) {
           </div>
         ) : null}
         <div className="flex justify-between gap-2">
-          <dt className="opacity-80">Submitted</dt>
-          <dd className="font-medium tabular-nums text-[var(--ink)]">
-            {formatPHP(item.amount)}
-          </dd>
-        </div>
-        <div className="flex justify-between gap-2">
-          <dt className="opacity-80">Due date</dt>
-          <dd className="font-medium text-[var(--ink)]">
+          <dt className="opacity-80">Due Date</dt>
+          <dd className="font-mono font-medium text-[var(--ink)]">
             {formatDate(item.dueDate)}
           </dd>
         </div>
         <div className="flex justify-between gap-2">
           <dt className="opacity-80">
-            {item.gracePeriodDays}-day grace ends
+            {item.gracePeriodDays}-Day Grace Ends
           </dt>
-          <dd className="font-medium text-[var(--ink)]">
+          <dd className="font-mono font-medium text-[var(--ink)]">
             {formatDate(item.graceDeadline)}
           </dd>
         </div>
         <div className="flex justify-between gap-2">
-          <dt className="opacity-80">Heads snapshot</dt>
-          <dd className="font-medium text-[var(--ink)]">
-            {item.headsSnapshot ?? "—"}
-          </dd>
-        </div>
-        <div className="flex justify-between gap-2">
-          <dt className="opacity-80">Chargeable days</dt>
-          <dd className="font-medium tabular-nums text-[var(--ink)]">
-            {item.daysDelayed}
-          </dd>
-        </div>
-        <div className="flex justify-between gap-2">
           <dt className="opacity-80">
-            ₱{item.penaltyRatePerHeadPerDay}/head/day
+            Late Penalty ({item.daysDelayed}d × ₱{item.penaltyRatePerHeadPerDay} ×{" "}
+            {item.headsSnapshot ?? 1}H)
           </dt>
-          <dd className="font-semibold tabular-nums text-[var(--ink)]">
+          <dd className="font-mono font-bold tabular-nums text-[var(--ink)]">
             {formatPHP(item.penaltyAmount)}
           </dd>
         </div>
       </dl>
-      <p className="type-caption mt-2 opacity-80">{item.lateFeeBreakdown}</p>
       {item.penaltyAccrualFrozen ? (
-        <p className="type-caption mt-1 font-medium opacity-90">
+        <p className="mt-2 text-[11px] font-semibold">
           Pass granted — late fee waived
         </p>
       ) : item.penaltyFrozenAtSubmit ? (
-        <p className="type-caption mt-1 font-medium opacity-90">
-          Frozen at submit · reject resumes accrual
+        <p className="mt-2 text-[11px] font-medium opacity-85">
+          Accrual frozen at submission timestamp · rejecting resumes penalty
         </p>
       ) : null}
     </div>
@@ -590,36 +563,36 @@ function AiMatchBadge({ item }: { item: VerifyQueueItem }) {
 
   if (status.kind === "none") {
     return (
-      <div className="rounded-[var(--radius)] bg-[var(--surface)] px-3 py-2 type-caption text-[var(--ink-muted)] ring-1 ring-[var(--border)]">
-        No AI scan
+      <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-subtle)] px-3.5 py-2.5 type-caption">
+        No AI OCR telemetry attached to this submission
       </div>
     );
   }
 
   if (status.kind === "match") {
     return (
-      <div className="flex items-center gap-2 rounded-[var(--radius)] bg-[var(--success-soft)] px-3 py-2.5 type-body-sm font-semibold text-[var(--success)] ring-1 ring-[color-mix(in_oklab,var(--success)_28%,transparent)]">
+      <div className="flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--success-border)] bg-[var(--success-soft)] px-3.5 py-2.5 text-xs font-bold text-[var(--success)]">
         <ShieldCheck className="h-4 w-4 shrink-0" aria-hidden />
-        AI match
+        AI OCR Match Verified (Amount & Reference)
       </div>
     );
   }
 
   return (
-    <div className="rounded-[var(--radius)] bg-[var(--warning-soft)] px-3 py-2.5 text-[var(--warning)] ring-1 ring-[color-mix(in_oklab,var(--warning)_28%,transparent)]">
-      <div className="flex items-center gap-2 type-body-sm font-semibold">
+    <div className="rounded-[var(--radius-md)] border border-[var(--warning-border)] bg-[var(--warning-soft)] p-3.5 text-[var(--warning)]">
+      <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider">
         <ShieldAlert className="h-4 w-4 shrink-0" aria-hidden />
-        Manual override
+        OCR vs. Member Entry Differs
       </div>
-      <dl className="mt-2 space-y-1.5 type-caption">
+      <dl className="mt-2 space-y-1 text-xs">
         <div className="flex justify-between gap-2">
           <dt className="opacity-80">Amount</dt>
-          <dd className="text-right tabular-nums text-[var(--ink)]">
+          <dd className="text-right font-mono tabular-nums text-[var(--ink)]">
             <span className="opacity-70">
-              AI {status.aiAmount != null ? formatPHP(status.aiAmount) : "—"}
+              OCR {status.aiAmount != null ? formatPHP(status.aiAmount) : "—"}
             </span>
             <span className="mx-1 opacity-50">→</span>
-            <span className="font-semibold">
+            <span className="font-bold">
               {formatPHP(status.submittedAmount)}
             </span>
           </dd>
@@ -627,14 +600,14 @@ function AiMatchBadge({ item }: { item: VerifyQueueItem }) {
         <div className="flex justify-between gap-2">
           <dt className="opacity-80">Reference</dt>
           <dd className="max-w-[65%] text-right font-mono break-all text-[var(--ink)]">
-            <span className="opacity-70">AI {status.aiRefNo ?? "—"}</span>
+            <span className="opacity-70">OCR {status.aiRefNo ?? "—"}</span>
             <span className="mx-1 opacity-50">→</span>
-            <span className="font-semibold">{status.submittedRefNo}</span>
+            <span className="font-bold">{status.submittedRefNo}</span>
           </dd>
         </div>
       </dl>
       {item.aiConfidenceNote ? (
-        <p className="type-caption mt-2 opacity-80">{item.aiConfidenceNote}</p>
+        <p className="mt-1.5 text-[11px] opacity-85">{item.aiConfidenceNote}</p>
       ) : null}
     </div>
   );

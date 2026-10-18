@@ -7,6 +7,10 @@ import {
   HandCoins,
   CheckCircle2,
   ArrowRight,
+  Wallet,
+  CalendarClock,
+  ReceiptText,
+  Sparkles,
 } from "lucide-react";
 import { formatPHP } from "@/lib/finance/loan-calculator";
 import {
@@ -19,6 +23,7 @@ import { KinsenasYearMap } from "@/components/finance/kinsenas-year-map";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusPill } from "@/components/ui/status-pill";
 import { Money } from "@/components/ui/money";
+import { FundCanvas } from "@/components/system/frames/fund-canvas";
 
 export type DashboardRecentPayment = {
   id: string;
@@ -82,11 +87,11 @@ function obligationTone(next: NextKinsenasObligation) {
 }
 
 const TONE_LABEL = {
-  pending: "Receipt pending",
-  late: "Late fee accruing",
-  catchup: "Catch-up",
-  grace: "In grace",
-  due: "Due soon",
+  pending: "Verification Pending",
+  late: "Late Fee Accruing",
+  catchup: "Catch-up Period",
+  grace: "Within 2-Day Grace",
+  due: "Upcoming Obligation",
 } as const;
 
 export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
@@ -121,218 +126,305 @@ export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
   const tone = nextKinsenas ? obligationTone(nextKinsenas) : null;
 
   return (
-    <div className="ui-fund-frame ui-dash">
+    <FundCanvas>
       <PageHeader
-        eyebrow="Home"
-        title={`Hi, ${firstName}`}
-        description={`${headsCount} head${headsCount === 1 ? "" : "s"} · ${formatPHP(kinsenasDue)} per kinsenas${mapOverdue > 0 ? ` · ${mapOverdue} overdue` : ""}`}
+        eyebrow="Personal Sinking Fund"
+        title={`Welcome, ${firstName}`}
+        description={`${headsCount} active head${headsCount === 1 ? "" : "s"} · ${formatPHP(kinsenasDue)} per kinsenas (${formatPHP(monthlyDue)} / month)${mapOverdue > 0 ? ` · ${mapOverdue} overdue period${mapOverdue === 1 ? "" : "s"}` : ""}`}
+        actions={
+          <div className="flex items-center gap-2">
+            <Link href={payHref} className="rl-btn rl-btn-primary">
+              Pay Dues
+              <ArrowRight className="h-4 w-4" aria-hidden />
+            </Link>
+            <Link href="/loans" className="rl-btn rl-btn-secondary">
+              Loan Calculator
+            </Link>
+          </div>
+        }
       />
 
-      <div
-        className={`ui-desk ui-dash-desk${tone === "late" ? " ui-dash-desk--late" : ""}`}
-      >
-        {nextKinsenas && tone ? (
+      <div className="rl-dash-grid">
+        {/* Left / Primary Column: Sovereign Obligation Hero + 24-Slot Kinsenas Year Matrix */}
+        <div className="rl-fund-stack">
           <section
             aria-labelledby="next-due-heading"
-            className={`ui-dash-due ui-dash-due--${tone}`}
+            className="rl-vault-card"
           >
-            <span
-              className={`ui-dash-due-rail ui-dash-due-rail--${tone}`}
-              aria-hidden
-            />
-            <div className="ui-dash-due-body">
-              <div className="ui-dash-due-top">
-                <div className="min-w-0">
-                  <p className="type-label" id="next-due-heading">
-                    Next kinsenas
+            {nextKinsenas && tone ? (
+              <div className="rl-vault-body">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="rl-vault-eyebrow" id="next-due-heading">
+                      Next Kinsenas Obligation
+                    </p>
+                    <p className="mt-1 text-base font-semibold text-white">
+                      {nextKinsenas.periodLabel} ·{" "}
+                      {nextKinsenas.kinsenaIndex === 1
+                        ? "1st Kinsenas (15th)"
+                        : "2nd Kinsenas (EOM)"}
+                    </p>
+                  </div>
+                  <span
+                    className={`rl-vault-badge rl-vault-badge--${
+                      tone === "late"
+                        ? "late"
+                        : tone === "grace" || tone === "pending"
+                          ? "grace"
+                          : "default"
+                    }`}
+                  >
+                    {TONE_LABEL[tone]}
+                  </span>
+                </div>
+
+                <div>
+                  <p className="type-metric-lg text-white">
+                    {formatPHP(obligationTotal)}
                   </p>
-                  <p className="type-body-sm mt-1 font-medium">
-                    {nextKinsenas.periodLabel} ·{" "}
-                    {nextKinsenas.kinsenaIndex === 1 ? "15th" : "EOM"}
+                  <p className="mt-1.5 font-mono text-xs text-white/75 tabular-nums">
+                    {nextKinsenas.penaltyAmount > 0
+                      ? `${formatPHP(nextKinsenas.amountDue)} principal due + ${formatPHP(nextKinsenas.penaltyAmount)} late penalty`
+                      : `${formatPHP(nextKinsenas.amountDue)} base contribution (${nextKinsenas.headsSnapshot} head${nextKinsenas.headsSnapshot === 1 ? "" : "s"} × ₱250)`}
                   </p>
                 </div>
-                <span
-                  className={`ui-dash-due-badge ui-dash-due-badge--${tone}`}
-                >
-                  {TONE_LABEL[tone]}
-                </span>
+
+                <dl className="rl-vault-meta-grid">
+                  <div className="rl-vault-meta-item">
+                    <dt>Due Date</dt>
+                    <dd>{formatUtcDate(nextKinsenas.dueDate)}</dd>
+                  </div>
+                  <div className="rl-vault-meta-item">
+                    <dt>
+                      {nextKinsenas.isCatchUp
+                        ? "Policy Grace Ended"
+                        : "2-Day Grace Ends"}
+                    </dt>
+                    <dd>{formatUtcDate(nextKinsenas.graceDeadline)}</dd>
+                  </div>
+                  <div className="rl-vault-meta-item col-span-2 sm:col-span-1">
+                    <dt>Allocation</dt>
+                    <dd>
+                      {nextKinsenas.headsSnapshot} Head
+                      {nextKinsenas.headsSnapshot === 1 ? "" : "s"}
+                    </dd>
+                  </div>
+                </dl>
+
+                {(nextKinsenas.isOverdue || nextKinsenas.penaltyAmount > 0) && (
+                  <div
+                    className="flex items-start gap-3 rounded-[var(--radius-md)] border border-red-300/30 bg-red-950/45 px-3.5 py-3 text-white"
+                    role="status"
+                  >
+                    <AlertTriangle
+                      className="mt-0.5 h-4 w-4 shrink-0 text-red-300"
+                      aria-hidden
+                    />
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-red-100">
+                        Rule #3 Late Fee: {formatPHP(nextKinsenas.penaltyAmount)}
+                      </p>
+                      <p className="mt-0.5 text-xs text-red-200/85">
+                        {nextKinsenas.lateFeeBreakdown}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                  <Link
+                    href={payHref}
+                    className="rl-btn rl-btn-vault rl-btn-lg flex-1 sm:flex-initial"
+                  >
+                    Settle this period
+                    <ArrowRight className="h-4 w-4" aria-hidden />
+                  </Link>
+                  <span className="text-xs text-white/65">
+                    Penalty freezes immediately upon receipt upload
+                  </span>
+                </div>
               </div>
-
-              <p className="ui-dash-due-amount">
-                <Money amount={obligationTotal} metric />
-              </p>
-              {nextKinsenas.penaltyAmount > 0 ? (
-                <p className="type-caption mt-1 tabular-nums">
-                  {formatPHP(nextKinsenas.amountDue)} base +{" "}
-                  {formatPHP(nextKinsenas.penaltyAmount)} late
+            ) : (
+              <div className="rl-vault-body">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="rl-vault-eyebrow">Obligation Status</p>
+                    <h2 className="mt-1 text-xl font-bold text-white">
+                      All Open Kinsenas Settled
+                    </h2>
+                  </div>
+                  <span className="rl-vault-badge rl-vault-badge--clear">
+                    <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+                    In Good Standing
+                  </span>
+                </div>
+                <p className="max-w-lg text-sm leading-relaxed text-white/80">
+                  You have no outstanding kinsenas obligations due right now. You can review your annual contribution matrix below or submit an advance payment.
                 </p>
-              ) : null}
-
-              <dl className="ui-dash-due-dates">
-                <div>
-                  <dt>Due</dt>
-                  <dd>{formatUtcDate(nextKinsenas.dueDate)}</dd>
+                <div className="pt-1">
+                  <Link href="/pay" className="rl-btn rl-btn-vault">
+                    Open Payment Desk
+                    <ArrowRight className="h-4 w-4" aria-hidden />
+                  </Link>
                 </div>
-                <div>
-                  <dt>
-                    {nextKinsenas.isCatchUp
-                      ? "Policy grace ended"
-                      : "Grace ends"}
-                  </dt>
-                  <dd>{formatUtcDate(nextKinsenas.graceDeadline)}</dd>
-                </div>
-              </dl>
+              </div>
+            )}
+          </section>
 
-              {(nextKinsenas.isOverdue || nextKinsenas.penaltyAmount > 0) && (
-                <div className="ui-dash-due-alert" role="status">
-                  <AlertTriangle
-                    className="mt-0.5 h-4 w-4 shrink-0"
+          {kinsenasYearMap ? (
+            <KinsenasYearMap map={kinsenasYearMap} variant="ledger" />
+          ) : null}
+        </div>
+
+        {/* Right / Secondary Column: Portfolio Telemetry, Active Loan Installment, Recent Ledger */}
+        <div className="rl-fund-stack">
+          <section aria-label="Fund Position">
+            <div
+              className={`rl-kpi-grid${prepaidCredit > 0 ? " rl-kpi-grid--3" : ""}`}
+            >
+              <div className="rl-kpi-card">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="type-label">Verified Equity</p>
+                  <Wallet
+                    className="h-4 w-4 text-[var(--brand)]"
                     aria-hidden
                   />
+                </div>
+                <div>
+                  <p className="rl-kpi-value">{formatPHP(totalEquity)}</p>
+                  <p className="type-caption mt-1 tabular-nums">
+                    {formatPHP(monthlyDue)} / mo commitment
+                  </p>
+                </div>
+              </div>
+
+              <div className="rl-kpi-card">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="type-label">Active Loan</p>
+                  <HandCoins
+                    className="h-4 w-4 text-[var(--brand)]"
+                    aria-hidden
+                  />
+                </div>
+                <div>
+                  <p className="rl-kpi-value">{formatPHP(activeLoanBalance)}</p>
+                  <Link
+                    href="/loans"
+                    className="type-caption mt-1 inline-flex items-center gap-0.5 font-semibold text-[var(--brand)] hover:underline"
+                  >
+                    {activeLoanBalance > 0 ? "View schedule" : "Check eligibility"}
+                    <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+                  </Link>
+                </div>
+              </div>
+
+              {prepaidCredit > 0 ? (
+                <div className="rl-kpi-card col-span-2 sm:col-span-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="type-label">Prepaid Credit</p>
+                    <Sparkles
+                      className="h-4 w-4 text-[var(--success)]"
+                      aria-hidden
+                    />
+                  </div>
                   <div>
-                    <p className="type-body-sm font-medium">
-                      Late fee {formatPHP(nextKinsenas.penaltyAmount)}
+                    <p className="rl-kpi-value text-[var(--success)]">
+                      {formatPHP(prepaidCredit)}
                     </p>
-                    <p className="type-caption mt-1">
-                      {nextKinsenas.lateFeeBreakdown}
-                    </p>
+                    <p className="type-caption mt-1">Auto-applied to dues</p>
                   </div>
                 </div>
-              )}
-
-              <Link
-                href={payHref}
-                className="ui-btn ui-btn-primary ui-btn-lg ui-btn-block mt-auto"
-              >
-                Pay now
-                <ArrowRight className="h-4 w-4" aria-hidden />
-              </Link>
+              ) : null}
             </div>
           </section>
-        ) : (
-          <section className="ui-dash-due ui-dash-due--clear" aria-live="polite">
-            <div className="ui-dash-due-body ui-dash-clear">
-              <CheckCircle2
-                className="h-6 w-6 shrink-0 text-[var(--success)]"
-                aria-hidden
-              />
-              <div className="min-w-0 flex-1">
-                <p className="type-title">You&apos;re caught up</p>
-                <p className="type-caption mt-1">No open kinsenas.</p>
-                <Link
-                  href="/pay"
-                  className="ui-btn ui-btn-secondary mt-4 sm:w-auto"
-                >
-                  Go to Pay
-                </Link>
-              </div>
-            </div>
-          </section>
-        )}
 
-        <section className="ui-dash-balances" aria-label="Balances">
-          <div className="ui-dash-balance">
-            <p className="type-label">Equity</p>
-            <p className="ui-dash-balance-value">{formatPHP(totalEquity)}</p>
-            <p className="type-caption mt-1 tabular-nums">
-              {formatPHP(monthlyDue)} / month
-            </p>
-          </div>
-          <div className="ui-dash-balance">
-            <p className="type-label">Active loan</p>
-            <p className="ui-dash-balance-value">
-              {formatPHP(activeLoanBalance)}
-            </p>
-            <Link
-              href="/loans"
-              className="type-caption mt-1 inline-flex min-h-11 items-center gap-0.5 font-medium text-[var(--brand)]"
+          {nextAmortization ? (
+            <section
+              className="rl-section"
+              aria-labelledby="loan-installment-heading"
             >
-              Loans
-              <ChevronRight className="h-3.5 w-3.5" aria-hidden />
-            </Link>
-          </div>
-          {prepaidCredit > 0 ? (
-            <div className="ui-dash-balance">
-              <p className="type-label">Prepaid</p>
-              <p className="ui-dash-balance-value">
-                {formatPHP(prepaidCredit)}
-              </p>
-            </div>
+              <Link href="/pay" className="rl-dash-loan-row">
+                <span className="rl-dash-loan-icon" aria-hidden>
+                  <CalendarClock className="h-5 w-5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <p
+                      className="type-label text-[var(--brand)]"
+                      id="loan-installment-heading"
+                    >
+                      {nextAmortization.loanLabel} · Installment #
+                      {nextAmortization.installmentNumber}
+                    </p>
+                    <span className="font-mono text-sm font-bold tabular-nums text-[var(--ink)]">
+                      <Money amount={nextAmortization.amountDue} />
+                    </span>
+                  </div>
+                  <p className="type-caption mt-1">
+                    Due {formatUtcDate(nextAmortization.dueDate)} · Grace ends{" "}
+                    {formatUtcDate(nextAmortization.graceDeadline)}
+                    {nextAmortization.penaltyAmount > 0
+                      ? ` · Late ${formatPHP(nextAmortization.penaltyAmount)}`
+                      : ""}
+                  </p>
+                </div>
+                <ChevronRight
+                  className="h-4 w-4 shrink-0 text-[var(--ink-muted)]"
+                  aria-hidden
+                />
+              </Link>
+            </section>
           ) : null}
-        </section>
-      </div>
 
-      <div className="ui-fund-stack">
-        {nextAmortization ? (
-          <section className="ui-section" aria-labelledby="loan-installment-heading">
-            <Link href="/loans" className="ui-dash-loan-row">
-              <span className="ui-dash-loan-icon" aria-hidden>
-                <HandCoins className="h-4 w-4" />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="type-caption" id="loan-installment-heading">
-                  Next loan installment
+          <section
+            className="rl-dash-panel"
+            aria-labelledby="recent-payments-heading"
+          >
+            <div className="rl-section-head border-b border-[var(--border-subtle)] pb-3">
+              <div className="flex items-center gap-2">
+                <ReceiptText
+                  className="h-4 w-4 text-[var(--brand)]"
+                  aria-hidden
+                />
+                <h2 className="type-title" id="recent-payments-heading">
+                  Recent Submissions
+                </h2>
+              </div>
+              <span className="type-caption">Last 30 days</span>
+            </div>
+            {recentPayments.length === 0 ? (
+              <div className="rl-dash-empty">
+                <p className="type-body-sm font-medium text-[var(--ink-secondary)]">
+                  No submissions in the last 30 days
                 </p>
-                <p className="type-body-sm mt-0.5 font-medium tabular-nums">
-                  #{nextAmortization.installmentNumber} ·{" "}
-                  {formatPHP(nextAmortization.amountDue)}
-                </p>
-                <p className="type-caption mt-0.5">
-                  Due {formatUtcDate(nextAmortization.dueDate)}
-                  {nextAmortization.penaltyAmount > 0
-                    ? ` · Late ${formatPHP(nextAmortization.penaltyAmount)}`
-                    : ""}
+                <p className="type-caption mt-1">
+                  Uploaded receipts and cash attestations will appear here.
                 </p>
               </div>
-              <ChevronRight
-                className="h-4 w-4 shrink-0 text-[var(--ink-muted)]"
-                aria-hidden
-              />
-            </Link>
+            ) : (
+              <ul className="rl-dash-list mt-3">
+                {recentPayments.map((payment) => (
+                  <li key={payment.id} className="rl-dash-list-item">
+                    <div className="min-w-0">
+                      <p className="type-body-sm truncate font-semibold">
+                        {payment.label}
+                      </p>
+                      <p className="type-caption mt-0.5 font-mono tabular-nums">
+                        {new Date(payment.date).toLocaleDateString("en-PH", {
+                          month: "short",
+                          day: "numeric",
+                        })}{" "}
+                        · {formatPHP(payment.amount)}
+                      </p>
+                    </div>
+                    <StatusPill status={payment.status} />
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
-        ) : null}
-
-        {kinsenasYearMap ? (
-          <KinsenasYearMap map={kinsenasYearMap} variant="ledger" />
-        ) : null}
-
-        <section
-          className="ui-dash-panel"
-          aria-labelledby="recent-payments-heading"
-        >
-          <div className="ui-section-head">
-            <h2 className="type-title" id="recent-payments-heading">
-              Recent payments
-            </h2>
-            <span className="type-caption">Last 30 days</span>
-          </div>
-          {recentPayments.length === 0 ? (
-            <p className="ui-dash-empty type-body-sm type-muted">
-              No submissions yet.
-            </p>
-          ) : (
-            <ul className="ui-dash-list mt-3">
-              {recentPayments.map((payment) => (
-                <li key={payment.id} className="ui-dash-list-item">
-                  <div className="min-w-0">
-                    <p className="type-body-sm truncate font-medium">
-                      {payment.label}
-                    </p>
-                    <p className="type-caption mt-0.5 tabular-nums">
-                      {new Date(payment.date).toLocaleDateString("en-PH", {
-                        month: "short",
-                        day: "numeric",
-                      })}{" "}
-                      · {formatPHP(payment.amount)}
-                    </p>
-                  </div>
-                  <StatusPill status={payment.status} />
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+        </div>
       </div>
-    </div>
+    </FundCanvas>
   );
 }

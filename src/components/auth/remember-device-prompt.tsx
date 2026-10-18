@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, KeyRound, ShieldCheck, ArrowLeft } from "lucide-react";
 import { getUserPinStatus } from "@/actions/pin";
 import { PinInput } from "@/components/auth/pin-input";
+import { AuthBrandHero } from "@/components/brand/auth-shell";
 import { PIN_LENGTH } from "@/lib/auth/pin-constants";
 
 type Step = "ask" | "enter-pin" | "set-pin" | "confirm-pin" | "loading-status";
@@ -73,48 +74,55 @@ export function RememberDevicePrompt({
 
   if (step === "ask") {
     return (
-      <div className="ui-card-lg ui-stack">
-        <div>
-          <h2 className="type-title">
-            Remember {name.split(" ")[0] ?? "this account"}?
-          </h2>
-          <p className="type-body-sm type-muted mt-2">
-            Save on this device for faster unlock. Use your account PIN, or
-            create one if you have not set it yet.
-          </p>
-        </div>
+      <div className="w-full">
+        <AuthBrandHero
+          title={`Remember ${name.split(" ")[0] ?? "this account"}?`}
+          subtitle="Enable quick 6-digit PIN unlock on this device"
+        />
+        <div className="rl-auth-panel rl-stack">
+          <div className="rl-inset flex items-start gap-3">
+            <ShieldCheck
+              className="mt-0.5 h-5 w-5 shrink-0 text-[var(--brand)]"
+              aria-hidden
+            />
+            <p className="type-caption leading-relaxed">
+              Your device credential is encrypted and bound to your account. You can revoke it anytime from the sign-in screen.
+            </p>
+          </div>
 
-        {error ? <p className="ui-alert ui-alert-error">{error}</p> : null}
+          {error ? <p className="rl-alert rl-alert-error">{error}</p> : null}
 
-        <div className="ui-stack-sm">
-          <button
-            type="button"
-            disabled={pending}
-            onClick={() => {
-              setError(null);
-              setStep("loading-status");
-            }}
-            className="ui-btn ui-btn-primary ui-btn-block"
-          >
-            Remember with PIN
-          </button>
-          <button
-            type="button"
-            disabled={pending}
-            onClick={rememberWithoutPin}
-            className="ui-btn ui-btn-secondary ui-btn-block"
-          >
-            {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            Remember without PIN
-          </button>
-          <button
-            type="button"
-            disabled={pending}
-            onClick={onSkip}
-            className="ui-btn ui-btn-ghost ui-btn-block"
-          >
-            Not now
-          </button>
+          <div className="rl-stack-sm">
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => {
+                setError(null);
+                setStep("loading-status");
+              }}
+              className="rl-btn rl-btn-primary rl-btn-lg rl-btn-block"
+            >
+              <KeyRound className="h-4 w-4" aria-hidden />
+              Remember with PIN
+            </button>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={rememberWithoutPin}
+              className="rl-btn rl-btn-secondary rl-btn-block"
+            >
+              {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              Remember without PIN
+            </button>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={onSkip}
+              className="rl-btn rl-btn-ghost rl-btn-block"
+            >
+              Not now
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -122,9 +130,9 @@ export function RememberDevicePrompt({
 
   if (step === "loading-status") {
     return (
-      <div className="ui-stack flex w-full flex-col items-center text-center">
-        <Loader2 className="h-5 w-5 animate-spin text-[var(--brand)]" />
-        <p className="type-body-sm type-muted">Checking PIN…</p>
+      <div className="rl-auth-panel flex w-full flex-col items-center gap-3 py-12 text-center">
+        <Loader2 className="h-6 w-6 animate-spin text-[var(--brand)]" />
+        <p className="type-body-sm type-muted">Checking PIN status…</p>
       </div>
     );
   }
@@ -132,30 +140,34 @@ export function RememberDevicePrompt({
   if (step === "enter-pin") {
     return (
       <div className="w-full">
-        <PinInput
-          title="Enter your PIN"
-          subtitle={`Use your ${PIN_LENGTH}-digit account PIN to unlock on this device`}
-          value={pin}
-          onChange={setPin}
-          error={error}
-          disabled={pending}
-          onComplete={(next) => {
-            setPin(next);
-            finishWithPin(next);
-          }}
-        />
-        <button
-          type="button"
-          disabled={pending}
-          onClick={() => {
-            setPin("");
-            setError(null);
-            setStep("ask");
-          }}
-          className="ui-btn ui-btn-ghost ui-btn-block mt-6"
-        >
-          Back
-        </button>
+        <AuthBrandHero title="Verify PIN" subtitle="Confirm your account PIN" />
+        <div className="rl-auth-panel rl-stack">
+          <PinInput
+            title="Enter your PIN"
+            subtitle={`Use your ${PIN_LENGTH}-digit account PIN to link this device`}
+            value={pin}
+            onChange={setPin}
+            error={error}
+            disabled={pending}
+            onComplete={(next) => {
+              setPin(next);
+              finishWithPin(next);
+            }}
+          />
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => {
+              setPin("");
+              setError(null);
+              setStep("ask");
+            }}
+            className="rl-btn rl-btn-ghost rl-btn-block"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden />
+            Back
+          </button>
+        </div>
       </div>
     );
   }
@@ -163,66 +175,80 @@ export function RememberDevicePrompt({
   if (step === "set-pin") {
     return (
       <div className="w-full">
-        <PinInput
-          title="Create a PIN"
-          subtitle={`Set a ${PIN_LENGTH}-digit PIN once — you will reuse it on every device`}
-          value={pin}
-          onChange={setPin}
-          error={error}
-          disabled={pending}
-          onComplete={(next) => {
-            setPin(next);
-            setConfirm("");
-            setError(null);
-            setStep("confirm-pin");
-          }}
+        <AuthBrandHero
+          title="Set Account PIN"
+          subtitle="Reusable across all your remembered devices"
         />
-        <button
-          type="button"
-          disabled={pending}
-          onClick={() => {
-            setPin("");
-            setStep("ask");
-          }}
-          className="ui-btn ui-btn-ghost ui-btn-block mt-6"
-        >
-          Back
-        </button>
+        <div className="rl-auth-panel rl-stack">
+          <PinInput
+            title="Create a 6-digit PIN"
+            subtitle="Choose a secure sequence you can easily recall"
+            value={pin}
+            onChange={setPin}
+            error={error}
+            disabled={pending}
+            onComplete={(next) => {
+              setPin(next);
+              setConfirm("");
+              setError(null);
+              setStep("confirm-pin");
+            }}
+          />
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => {
+              setPin("");
+              setStep("ask");
+            }}
+            className="rl-btn rl-btn-ghost rl-btn-block"
+          >
+            <ArrowLeft className="h-4 w-4" aria-hidden />
+            Back
+          </button>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="w-full">
-      <PinInput
-        title="Confirm PIN"
-        subtitle="Enter the same PIN again"
-        value={confirm}
-        onChange={setConfirm}
-        error={error}
-        disabled={pending}
-        onComplete={(next) => {
-          if (next !== pin) {
-            setError("PINs do not match. Try again.");
-            setConfirm("");
-            return;
-          }
-          finishWithPin(next);
-        }}
+      <AuthBrandHero
+        title="Confirm Account PIN"
+        subtitle="Re-enter your 6-digit PIN to save"
       />
-      <button
-        type="button"
-        disabled={pending}
-        onClick={() => {
-          setConfirm("");
-          setPin("");
-          setError(null);
-          setStep("set-pin");
-        }}
-        className="ui-btn ui-btn-ghost ui-btn-block mt-6"
-      >
-        Back
-      </button>
+      <div className="rl-auth-panel rl-stack">
+        <PinInput
+          title="Confirm PIN"
+          subtitle="Enter the same 6-digit PIN again"
+          value={confirm}
+          onChange={setConfirm}
+          error={error}
+          disabled={pending}
+          onComplete={(next) => {
+            if (next !== pin) {
+              setError("PINs do not match. Try again.");
+              setConfirm("");
+              return;
+            }
+            finishWithPin(next);
+          }}
+        />
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => {
+            setConfirm("");
+            setPin("");
+            setError(null);
+            setStep("set-pin");
+          }}
+          className="rl-btn rl-btn-ghost rl-btn-block"
+        >
+          <ArrowLeft className="h-4 w-4" aria-hidden />
+          Back
+        </button>
+      </div>
     </div>
   );
 }

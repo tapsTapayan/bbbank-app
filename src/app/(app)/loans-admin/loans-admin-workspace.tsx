@@ -7,7 +7,9 @@ import {
   HandCoins,
   Loader2,
   XCircle,
+  CalendarClock,
 } from "lucide-react";
+import { clsx } from "clsx";
 import {
   approveLoan,
   disburseLoan,
@@ -17,6 +19,7 @@ import { formatPHP } from "@/lib/finance/loan-calculator";
 import { OpsWorkstation } from "@/components/ui/ops-workstation";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Money } from "@/components/ui/money";
+import { SplitView, SplitPane } from "@/components/system/frames/split-view";
 
 export type LoanDeskRow = {
   id: string;
@@ -36,11 +39,16 @@ export function LoansAdminWorkspace({ loans }: { loans: LoanDeskRow[] }) {
   const [pending, startTransition] = useTransition();
   const [toast, setToast] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState(loans[0]?.id ?? "");
+  const [mobilePane, setMobilePane] = useState<"queue" | "detail">("queue");
 
   const selected = loans.find((l) => l.id === selectedId) ?? loans[0] ?? null;
 
   function run(
-    action: () => Promise<{ success: boolean; error?: string; message?: string }>,
+    action: () => Promise<{
+      success: boolean;
+      error?: string;
+      message?: string;
+    }>,
   ) {
     startTransition(async () => {
       const result = await action();
@@ -55,170 +63,275 @@ export function LoansAdminWorkspace({ loans }: { loans: LoanDeskRow[] }) {
 
   return (
     <OpsWorkstation
-      title="Loan requests"
-      description="Approve · disburse"
+      title="Treasurer Loan Desk"
+      description="Review, approve, and disburse member loan requests"
       padded={false}
+      actions={
+        <>
+          <span
+            className={
+              loans.length > 0
+                ? "rl-pill rl-pill-pending"
+                : "rl-pill rl-pill-verified"
+            }
+          >
+            {loans.length} open
+          </span>
+          {toast ? (
+            <p
+              className="rl-alert rl-alert-info !py-1.5 !px-3 type-caption"
+              role="status"
+            >
+              {toast}
+            </p>
+          ) : null}
+        </>
+      }
     >
-      {toast ? (
-        <p className="ui-alert ui-alert-info mx-[var(--page-pad-x)] mt-3" role="status">
-          {toast}
-        </p>
-      ) : null}
-
       {loans.length === 0 ? (
         <EmptyState
           icon={<HandCoins className="h-5 w-5" aria-hidden />}
-          title="No open loan requests"
-          description="Nothing in queue."
+          title="No Open Loan Requests"
+          description="Pending and approved loan applications awaiting disbursement will appear here."
           className="px-[var(--page-pad-x)]"
         />
       ) : (
-        <div className="grid min-h-0 flex-1 gap-0 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
-          <div className="min-h-0 overflow-auto border-b border-[var(--border)] lg:border-b-0 lg:border-r">
-            <ul className="ui-data-cards p-3">
-              {loans.map((loan) => (
-                <li key={loan.id}>
-                  <button
-                    type="button"
-                    className={`ui-data-card w-full text-left ${
-                      selected?.id === loan.id
-                        ? "ring-2 ring-[var(--brand-accent)]"
-                        : ""
-                    }`}
-                    onClick={() => setSelectedId(loan.id)}
-                  >
-                    <p className="type-body-sm font-medium">{loan.borrowerName}</p>
-                    <p className="type-caption mt-1">{loan.borrowerEmail}</p>
-                    <p className="mt-2">
-                      <Money amount={loan.principalAmount} className="type-title" />
-                    </p>
-                    <p className="type-caption mt-1">{loan.status}</p>
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <div className="ui-data-table">
-              <table className="w-full text-left type-body-sm">
-                <thead className="sticky top-0 bg-[var(--surface)] type-caption">
-                  <tr className="border-b border-[var(--border)]">
-                    <th className="px-4 py-3 font-medium">Member</th>
-                    <th className="px-4 py-3 font-medium">Principal</th>
-                    <th className="px-4 py-3 font-medium">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loans.map((loan) => (
-                    <tr
-                      key={loan.id}
-                      className={`cursor-pointer border-b border-[var(--border)] ${
-                        selected?.id === loan.id ? "bg-[var(--brand-soft)]" : ""
-                      }`}
-                      onClick={() => setSelectedId(loan.id)}
-                    >
-                      <td className="px-4 py-3">
-                        <p className="font-medium">{loan.borrowerName}</p>
-                        <p className="type-caption">{loan.borrowerEmail}</p>
-                      </td>
-                      <td className="px-4 py-3 tabular-nums font-medium">
-                        {formatPHP(loan.principalAmount)}
-                      </td>
-                      <td className="px-4 py-3">{loan.status}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+        <>
+          <div
+            className="rl-ops-tabs md:hidden"
+            role="tablist"
+            aria-label="Loan desk panes"
+          >
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mobilePane === "queue"}
+              className="rl-ops-tab"
+              onClick={() => setMobilePane("queue")}
+            >
+              Requests ({loans.length})
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mobilePane === "detail"}
+              className="rl-ops-tab"
+              onClick={() => setMobilePane("detail")}
+            >
+              Review & Disburse
+            </button>
           </div>
 
-          <aside className="p-4 ui-stack">
-            {selected ? (
-              <>
-                <div>
-                  <p className="type-label">Selected</p>
-                  <h2 className="type-title mt-1">{selected.borrowerName}</h2>
-                  <p className="type-caption mt-1">
-                    {selected.headsSnapshot} head
-                    {selected.headsSnapshot === 1 ? "" : "s"} ·{" "}
-                    {(selected.interestRate * 100).toFixed(0)}% ·{" "}
-                    {selected.termMonths} mo · {selected.repaymentFrequency}
-                  </p>
-                  <p className="type-metric mt-3 tabular-nums">
-                    {formatPHP(selected.principalAmount)}
-                  </p>
-                  <p className="type-caption mt-2">
-                    Interest{" "}
-                    {formatPHP(
-                      selected.principalAmount * selected.interestRate,
-                    )}{" "}
-                    · Total payable{" "}
-                    {formatPHP(
-                      selected.principalAmount *
-                        (1 + selected.interestRate),
-                    )}
-                    {selected.repaymentFrequency === "KINSENAS"
-                      ? " · 4 kinsenas"
-                      : " · 2 monthly"}
-                  </p>
-                </div>
-                <div className="ui-stack-sm">
-                  {(selected.status === "PENDING"
-                    ? (
+          <SplitView variant="dual" className="min-h-0 flex-1">
+            <SplitPane
+              className={clsx(
+                mobilePane === "queue" ? "flex" : "hidden md:flex",
+              )}
+            >
+              <div className="rl-ops-toolbar">
+                <p className="type-label">Loan Applications</p>
+                <span className="type-caption font-mono">{loans.length}</span>
+              </div>
+              <ul className="rl-ops-pane-scroll space-y-2 p-3">
+                {loans.map((loan) => {
+                  const active = selected?.id === loan.id;
+                  return (
+                    <li key={loan.id}>
+                      <button
+                        type="button"
+                        className={clsx("rl-ops-row", active && "is-selected")}
+                        onClick={() => {
+                          setSelectedId(loan.id);
+                          setMobilePane("detail");
+                        }}
+                      >
+                        <div className="flex w-full items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="type-body-sm truncate font-semibold">
+                              {loan.borrowerName}
+                            </p>
+                            <p className="type-caption truncate">
+                              {loan.borrowerEmail}
+                            </p>
+                          </div>
+                          <span
+                            className={
+                              loan.status === "APPROVED"
+                                ? "rl-pill rl-pill-verified"
+                                : "rl-pill rl-pill-pending"
+                            }
+                          >
+                            {loan.status}
+                          </span>
+                        </div>
+                        <div className="mt-2 flex w-full items-center justify-between border-t border-[var(--border-subtle)] pt-2">
+                          <span className="type-caption font-mono">
+                            {loan.headsSnapshot}H ·{" "}
+                            {loan.repaymentFrequency === "KINSENAS"
+                              ? "4 Kinsenas"
+                              : "2 Monthly"}
+                          </span>
+                          <span className="font-mono text-sm font-bold tabular-nums text-[var(--ink)]">
+                            {formatPHP(loan.principalAmount)}
+                          </span>
+                        </div>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </SplitPane>
+
+            <SplitPane
+              className={clsx(
+                mobilePane === "detail" ? "flex" : "hidden md:flex",
+              )}
+            >
+              <div className="rl-ops-toolbar">
+                <p className="type-label">Application Telemetry & Action</p>
+              </div>
+              <div className="rl-ops-pane-scroll p-5 sm:p-6">
+                {selected ? (
+                  <div className="mx-auto max-w-2xl rl-stack">
+                    <div className="rl-vault-card">
+                      <div className="rl-vault-body">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="rl-vault-eyebrow">
+                              Borrower Application
+                            </p>
+                            <h2 className="mt-1 text-xl font-bold text-white">
+                              {selected.borrowerName}
+                            </h2>
+                            <p className="text-xs text-white/75">
+                              {selected.borrowerEmail}
+                            </p>
+                          </div>
+                          <span className="rl-vault-badge">
+                            {selected.status}
+                          </span>
+                        </div>
+
+                        <div>
+                          <p className="rl-vault-eyebrow">Requested Principal</p>
+                          <p className="type-metric mt-1 text-white">
+                            <Money
+                              amount={selected.principalAmount}
+                              metric
+                              className="!text-white"
+                            />
+                          </p>
+                        </div>
+
+                        <dl className="rl-vault-meta-grid">
+                          <div className="rl-vault-meta-item">
+                            <dt>
+                              Flat Interest (
+                              {(selected.interestRate * 100).toFixed(0)}%)
+                            </dt>
+                            <dd>
+                              {formatPHP(
+                                selected.principalAmount *
+                                  selected.interestRate,
+                              )}
+                            </dd>
+                          </div>
+                          <div className="rl-vault-meta-item">
+                            <dt>Total Payable</dt>
+                            <dd>
+                              {formatPHP(
+                                selected.principalAmount *
+                                  (1 + selected.interestRate),
+                              )}
+                            </dd>
+                          </div>
+                          <div className="rl-vault-meta-item col-span-2 sm:col-span-1">
+                            <dt>Schedule</dt>
+                            <dd>
+                              {selected.repaymentFrequency === "KINSENAS"
+                                ? "4 Kinsenas"
+                                : "2 Monthly"}{" "}
+                              ({selected.headsSnapshot}H)
+                            </dd>
+                          </div>
+                        </dl>
+                      </div>
+                    </div>
+
+                    <div className="rl-inset flex items-center gap-2.5">
+                      <CalendarClock
+                        className="h-4 w-4 shrink-0 text-[var(--brand)]"
+                        aria-hidden
+                      />
+                      <p className="type-caption">
+                        Submitted on{" "}
+                        {new Date(selected.createdAt).toLocaleDateString(
+                          "en-PH",
+                          {
+                            month: "long",
+                            day: "numeric",
+                            year: "numeric",
+                          },
+                        )}
+                        . Disbursing records an immutable{" "}
+                        <code className="font-mono">LOAN_DISBURSEMENT_OUT</code>{" "}
+                        ledger entry and generates the amortization schedule.
+                      </p>
+                    </div>
+
+                    <div className="grid gap-3 pt-2 sm:grid-cols-2">
+                      {selected.status === "PENDING" ? (
                         <>
                           <button
                             type="button"
                             disabled={pending}
-                            className="ui-btn ui-btn-success ui-btn-block"
-                            onClick={() =>
-                              run(() => approveLoan(selected.id))
-                            }
+                            className="rl-btn rl-btn-success rl-btn-lg rl-btn-block"
+                            onClick={() => run(() => approveLoan(selected.id))}
                           >
                             {pending ? (
                               <Loader2 className="h-4 w-4 animate-spin" />
                             ) : (
                               <CheckCircle2 className="h-4 w-4" />
                             )}
-                            Approve
+                            1. Approve Application
                           </button>
                           <button
                             type="button"
                             disabled={pending}
-                            className="ui-btn ui-btn-danger ui-btn-block"
-                            onClick={() =>
-                              run(() => rejectLoan(selected.id))
-                            }
+                            className="rl-btn rl-btn-danger rl-btn-lg rl-btn-block"
+                            onClick={() => run(() => rejectLoan(selected.id))}
                           >
                             <XCircle className="h-4 w-4" />
-                            Reject
+                            Reject Request
                           </button>
                         </>
-                      )
-                    : null)}
-                  {selected.status === "APPROVED" ||
-                  selected.status === "PENDING" ? (
-                    <button
-                      type="button"
-                      disabled={pending || selected.status === "PENDING"}
-                      className="ui-btn ui-btn-primary ui-btn-block"
-                      onClick={() => run(() => disburseLoan(selected.id))}
-                      title={
-                        selected.status === "PENDING"
-                          ? "Approve before disbursing"
-                          : undefined
-                      }
-                    >
-                      {pending ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <HandCoins className="h-4 w-4" />
+                      ) : null}
+
+                      {(selected.status === "APPROVED" ||
+                        selected.status === "PENDING") && (
+                        <button
+                          type="button"
+                          disabled={pending || selected.status === "PENDING"}
+                          className="rl-btn rl-btn-primary rl-btn-lg rl-btn-block sm:col-span-2"
+                          onClick={() => run(() => disburseLoan(selected.id))}
+                        >
+                          {pending ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <HandCoins className="h-4 w-4" />
+                          )}
+                          {selected.status === "PENDING"
+                            ? "2. Disburse Funds (Approve First)"
+                            : `Disburse ${formatPHP(selected.principalAmount)} Now`}
+                        </button>
                       )}
-                      Disburse
-                    </button>
-                  ) : null}
-                </div>
-              </>
-            ) : null}
-          </aside>
-        </div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </SplitPane>
+          </SplitView>
+        </>
       )}
     </OpsWorkstation>
   );

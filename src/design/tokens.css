@@ -1,0 +1,213 @@
+/*
+ * Royal Ledger — Sovereign Institutional Design Tokens
+ * Strict Chromatics: Royal Navy (#11335d) · Deep Midnight (#001529)
+ */
+
+:root {
+  /* Core Brand Palette */
+  --palette-navy: #11335d;
+  --palette-navy-hover: #0c2748;
+  --palette-navy-light: #1a4478;
+  --palette-midnight: #001529;
+  --palette-white: #ffffff;
+
+  /* Typographic Ink Hierarchy */
+  --ink: #001529;
+  --ink-secondary: #2c3a4b;
+  --ink-muted: #556270;
+  --ink-faint: #8492a2;
+
+  /* Architectural Surfaces */
+  --surface: #f2f5f8;
+  --surface-subtle: #f8fafc;
+  --surface-elevated: #ffffff;
+  --surface-hover: #edf2f7;
+  --app-chrome: #ebeff5;
+
+  /* Sovereign Vault Dark Surface (Navy/Midnight only) */
+  --surface-vault: linear-gradient(135deg, #001529 0%, #0a2342 52%, #11335d 100%);
+  --vault-border: rgb(255 255 255 / 0.12);
+  --vault-surface: rgb(255 255 255 / 0.07);
+  --vault-ink: #ffffff;
+  --vault-ink-muted: rgb(255 255 255 / 0.72);
+
+  /* Structural Hairlines & Borders */
+  --border: #dde3ec;
+  --border-subtle: #e8edf3;
+  --border-strong: #c2ccd8;
+
+  /* Brand Semantic Tokens */
+  --brand: var(--palette-navy);
+  --brand-strong: var(--palette-midnight);
+  --brand-soft: color-mix(in oklab, var(--palette-navy) 9%, white);
+  --brand-soft-hover: color-mix(in oklab, var(--palette-navy) 15%, white);
+  --brand-border: color-mix(in oklab, var(--palette-navy) 22%, transparent);
+  --brand-accent: var(--palette-navy);
+
+  /* Financial Status Semantics (WCAG AA+ Verified) */
+  --success: #0d6859;
+  --success-soft: #ecfdf5;
+  --success-border: color-mix(in oklab, #0d6859 24%, transparent);
+
+  --warning: #946200;
+  --warning-soft: #fffbeb;
+  --warning-border: color-mix(in oklab, #946200 26%, transparent);
+
+  --danger: #b42318;
+  --danger-soft: #fef2f2;
+  --danger-border: color-mix(in oklab, #b42318 25%, transparent);
+
+  /* Motion & Physics */
+  --duration-fast: 150ms;
+  --duration-base: 220ms;
+  --duration-slow: 320ms;
+  --duration-exit: 130ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-in: cubic-bezier(0.4, 0, 1, 1);
+
+  /* Fluid Type Scale */
+  --text-2xs: 0.6875rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 0.9375rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: clamp(1.25rem, 1.15rem + 0.5vw, 1.5rem);
+  --text-2xl: clamp(1.5rem, 1.3rem + 1vw, 2rem);
+  --text-3xl: clamp(1.875rem, 1.6rem + 1.4vw, 2.5rem);
+  --text-4xl: clamp(2.125rem, 1.8rem + 1.8vw, 3rem);
+
+  --leading-xs: 1.125rem;
+  --leading-sm: 1.35rem;
+  --leading-base: 1.5rem;
+  --leading-lg: 1.6rem;
+  --leading-xl: 1.3;
+  --leading-2xl: 1.15;
+
+  /* 4pt / 8pt Spatial Rhythm */
+  --space-1: 0.25rem;   /* 4px */
+  --space-1-5: 0.375rem;/* 6px */
+  --space-2: 0.5rem;    /* 8px */
+  --space-2-5: 0.625rem;/* 10px */
+  --space-3: 0.75rem;   /* 12px */
+  --space-4: 1rem;      /* 16px */
+  --space-5: 1.25rem;   /* 20px */
+  --space-6: 1.5rem;    /* 24px */
+  --space-8: 2rem;      /* 32px */
+  --space-10: 2.5rem;   /* 40px */
+  --space-12: 3rem;     /* 48px */
+
+  /* Interactive & Chrome Dimensions */
+  --control-h-sm: 2.25rem; /* 36px */
+  --control-h: 2.75rem;    /* 44px — Apple/Material touch floor */
+  --control-h-lg: 3.125rem;/* 50px */
+  --header-h: 3.5rem;      /* 56px */
+  --nav-h: 4.125rem;       /* 66px */
+  --sidebar-w: 16rem;      /* 256px */
+  --sidebar-w-collapsed: 4.5rem; /* 72px */
+  --rail-w: 4.5rem;        /* 72px */
+
+  /* Container & Viewport Geometry */
+  --content-narrow: 44rem;
+  --content-max: 74rem;
+  --content-wide: 84rem;
+  --page-gap: var(--space-5);
+  --page-pad-x: 1rem;
+  --page-pad-y: 1.25rem;
+
+  /* Architectural Radii */
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.375rem;
+  --radius: 0.5rem;
+  --radius-md: 0.625rem;
+  --radius-card: 0.875rem;
+  --radius-lg: 1rem;
+  --radius-pill: 9999px;
+
+  /* Multi-Tier Elevation System */
+  --shadow-xs: 0 1px 2px rgb(0 21 41 / 0.03);
+  --shadow-soft:
+    0 1px 2px rgb(0 21 41 / 0.04),
+    0 3px 10px -2px rgb(0 21 41 / 0.04);
+  --shadow-card:
+    0 1px 3px rgb(0 21 41 / 0.05),
+    0 8px 20px -6px rgb(0 21 41 / 0.06);
+  --shadow-elevated:
+    0 4px 12px rgb(0 21 41 / 0.06),
+    0 18px 36px -8px rgb(0 21 41 / 0.12);
+  --shadow-vault:
+    0 12px 32px -8px rgb(0 21 41 / 0.28),
+    0 2px 6px rgb(0 21 41 / 0.14);
+  --shadow-focus: 0 0 0 3px color-mix(in oklab, var(--brand) 24%, transparent);
+
+  /* Z-Index Scale */
+  --z-sticky: 20;
+  --z-header: 40;
+  --z-dock: 50;
+  --z-sheet: 60;
+  --z-modal: 70;
+  --z-skip: 100;
+
+  /* shadcn/ui Bridge */
+  --background: var(--surface);
+  --foreground: var(--ink);
+  --card: var(--surface-elevated);
+  --card-foreground: var(--ink);
+  --popover: var(--surface-elevated);
+  --popover-foreground: var(--ink);
+  --primary: var(--brand);
+  --primary-foreground: #ffffff;
+  --secondary: var(--brand-soft);
+  --secondary-foreground: var(--brand);
+  --muted: var(--surface-subtle);
+  --muted-foreground: var(--ink-muted);
+  --accent: var(--brand-soft);
+  --accent-foreground: var(--brand);
+  --destructive: var(--danger);
+  --input: var(--border);
+  --ring: var(--brand);
+  --chart-1: var(--palette-navy);
+  --chart-2: color-mix(in oklab, var(--palette-navy) 65%, white);
+  --chart-3: var(--ink-muted);
+  --chart-4: var(--palette-midnight);
+  --chart-5: #94a3b8;
+  --sidebar: var(--surface-elevated);
+  --sidebar-foreground: var(--ink);
+  --sidebar-primary: var(--brand);
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: var(--brand-soft);
+  --sidebar-accent-foreground: var(--brand);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--brand);
+}
+
+@media (min-width: 640px) {
+  :root {
+    --page-pad-x: 1.5rem;
+    --page-pad-y: 1.5rem;
+  }
+}
+
+@media (min-width: 768px) {
+  :root {
+    --page-gap: var(--space-6);
+    --page-pad-x: 2rem;
+    --page-pad-y: 1.75rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --page-pad-x: 2.25rem;
+    --page-pad-y: 2rem;
+    --sidebar-w: 16rem;
+  }
+}
+
+@media (min-width: 1280px) {
+  :root {
+    --page-pad-x: 2.75rem;
+    --page-pad-y: 2.25rem;
+  }
+}
