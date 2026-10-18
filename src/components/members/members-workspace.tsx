@@ -667,59 +667,57 @@ function EditMemberModal({
             </label>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <label className="rl-field">
-              <span className="rl-field-label">Heads Count</span>
-              <input
-                required
-                type="number"
-                min={1}
-                max={50}
-                disabled={isAdminAccount}
-                value={headsCount}
-                onChange={(e) =>
-                  setHeadsCount(Math.max(1, Number(e.target.value) || 1))
-                }
-                className="rl-input font-mono disabled:opacity-60"
-              />
-              <span className="rl-field-hint">
-                {formatPHP(headsCount * contributionPerHead)} / kinsenas
-              </span>
-            </label>
+          {!isAdminAccount ? (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="rl-field">
+                  <span className="rl-field-label">Heads Count</span>
+                  <input
+                    required
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={headsCount}
+                    onChange={(e) =>
+                      setHeadsCount(Math.max(1, Number(e.target.value) || 1))
+                    }
+                    className="rl-input font-mono"
+                  />
+                  <span className="rl-field-hint">
+                    {formatPHP(headsCount * contributionPerHead)} / kinsenas
+                  </span>
+                </label>
 
-            <label className="rl-field">
-              <span className="rl-field-label">Status</span>
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value as typeof status)}
-                className="rl-select"
-              >
-                <option value="ACTIVE">ACTIVE</option>
-                <option value="INACTIVE">INACTIVE</option>
-                <option value="SUSPENDED">SUSPENDED</option>
-              </select>
-            </label>
-          </div>
+                <label className="rl-field">
+                  <span className="rl-field-label">Status</span>
+                  <select
+                    value={status}
+                    onChange={(e) =>
+                      setStatus(e.target.value as typeof status)
+                    }
+                    className="rl-select"
+                  >
+                    <option value="ACTIVE">ACTIVE</option>
+                    <option value="INACTIVE">INACTIVE</option>
+                    <option value="SUSPENDED">SUSPENDED</option>
+                  </select>
+                </label>
+              </div>
 
-          <label className="rl-field">
-            <span className="rl-field-label">Role</span>
-            <select
-              value={role}
-              disabled={isAdminAccount}
-              onChange={(e) => setRole(e.target.value as typeof role)}
-              className="rl-select disabled:opacity-60"
-            >
-              {isAdminAccount ? (
-                <option value="ADMIN">ADMIN</option>
-              ) : (
-                <>
+              <label className="rl-field">
+                <span className="rl-field-label">Role</span>
+                <select
+                  value={role}
+                  onChange={(e) => setRole(e.target.value as typeof role)}
+                  className="rl-select"
+                >
                   <option value="MEMBER">MEMBER</option>
                   <option value="TREASURER">TREASURER</option>
                   <option value="AUDITOR">AUDITOR</option>
-                </>
-              )}
-            </select>
-          </label>
+                </select>
+              </label>
+            </>
+          ) : null}
 
           <label className="rl-field">
             <span className="rl-field-label">Reset Password (Optional)</span>
