@@ -9,6 +9,8 @@
     "lint": "eslint",
     "db:generate": "prisma generate",
     "db:validate": "prisma validate",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "postinstall": "prisma generate"
   },
   "dependencies": {
@@ -46,6 +48,7 @@
     "eslint-config-next": "16.4.2",
     "prisma": "^7.10.1",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^2.1.9"
   }
 }

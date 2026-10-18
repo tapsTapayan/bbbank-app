@@ -11,7 +11,7 @@ export { RECEIPT_BUCKET, RECEIPT_SIGNED_URL_TTL_SECONDS };
 /**
  * Server-side: authorize the viewer, then issue a 15-minute signed URL
  * for a private receipt object. Allowed: submitting Member, Treasurer,
- * Auditor, or Admin.
+ * or Auditor (not Admin — account management only).
  */
 export async function getReceiptSignedUrl(
   storagePath: string,
@@ -29,9 +29,7 @@ export async function getReceiptSignedUrl(
 
   const isSubmitter = submission?.userId === viewer.id;
   const isStaff =
-    viewer.role === "TREASURER" ||
-    viewer.role === "AUDITOR" ||
-    viewer.role === "ADMIN";
+    viewer.role === "TREASURER" || viewer.role === "AUDITOR";
 
   // Path convention: {cycleId}/{userId}/... — allow owner even before DB row exists.
   const pathUserId = storagePath.split("/")[1];

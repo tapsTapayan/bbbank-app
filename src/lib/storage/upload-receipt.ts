@@ -1,17 +1,16 @@
 "use client";
 
-import imageCompression from "browser-image-compression";
 import { createClient } from "@/lib/supabase/client";
 import { RECEIPT_BUCKET } from "@/lib/storage/constants";
-
-const MAX_WIDTH_OR_HEIGHT = 1200;
-const MAX_SIZE_MB = 0.25; // ~250 KB target
+import { compressReceiptImage } from "@/lib/storage/compress-receipt";
 
 export type CompressAndUploadReceiptParams = {
   file: File;
   cycleId: string;
   userId: string;
   referenceNumber: string;
+  /** When already compressed (e.g. after OCR), skip re-compression. */
+  alreadyCompressed?: boolean;
 };
 
 /**
@@ -22,15 +21,11 @@ export type CompressAndUploadReceiptParams = {
 export async function compressAndUploadReceipt(
   params: CompressAndUploadReceiptParams,
 ): Promise<string> {
-  const { file, cycleId, userId, referenceNumber } = params;
+  const { file, cycleId, userId, referenceNumber, alreadyCompressed } = params;
 
-  const compressed = await imageCompression(file, {
-    maxSizeMB: MAX_SIZE_MB,
-    maxWidthOrHeight: MAX_WIDTH_OR_HEIGHT,
-    useWebWorker: true,
-    fileType: "image/webp",
-    initialQuality: 0.8,
-  });
+  const compressed = alreadyCompressed
+    ? file
+    : await compressReceiptImage(file);
 
   const safeRef = referenceNumber
     .trim()

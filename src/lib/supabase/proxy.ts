@@ -1,15 +1,25 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { UserRole } from "@/generated/prisma/client";
+import {
+  ADMIN_PREFIXES,
+  AUDITOR_PREFIXES,
+  MEMBER_PREFIXES,
+  SHARED_OPS_PREFIXES,
+  TREASURER_PREFIXES,
+  roleHome,
+} from "@/lib/auth/routes";
 import { getSupabaseAnonKey, getSupabaseUrl } from "./env";
 
-const PUBLIC_PATHS = ["/", "/login", "/auth"];
-
-const MEMBER_PREFIXES = ["/dashboard"];
-
-const TREASURER_PREFIXES = ["/verify", "/loans-admin"];
-
-const AUDITOR_PREFIXES = ["/audit"];
+/** Paths reachable without (or regardless of) role provisioning. */
+const PUBLIC_PATHS = [
+  "/",
+  "/login",
+  "/setup",
+  "/auth",
+  "/unauthorized",
+  "/account-status",
+];
 
 const APP_ROLES: readonly UserRole[] = [
   "MEMBER",
@@ -24,7 +34,7 @@ function isPublicPath(pathname: string): boolean {
   );
 }
 
-function matchesPrefix(pathname: string, prefixes: string[]): boolean {
+function matchesPrefix(pathname: string, prefixes: readonly string[]): boolean {
   return prefixes.some(
     (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
   );
@@ -96,53 +106,81 @@ export async function updateSession(request: NextRequest) {
   const claims = data?.claims as Record<string, unknown> | undefined;
   const isAuthenticated = Boolean(claims?.sub);
   const pathname = request.nextUrl.pathname;
+  const role = claims ? roleFromClaims(claims) : null;
 
-  if (isPublicPath(pathname)) {
-    return supabaseResponse;
-  }
-
-  const redirectTo = (path: string) => {
+  const redirectTo = (path: string, withNext = false) => {
     const url = request.nextUrl.clone();
     url.pathname = path;
-    if (path === "/login") {
+    url.search = "";
+    if (withNext && path === "/login") {
       url.searchParams.set("next", pathname);
     }
     return copySessionCookies(supabaseResponse, NextResponse.redirect(url));
   };
 
+  // Signed-in users on `/` → role home (or /login to finish JWT role sync).
+  // `/login` stays reachable so the client can show remember-device / PIN setup.
+  if (isAuthenticated && pathname === "/") {
+    if (role) {
+      return redirectTo(roleHome(role));
+    }
+    return redirectTo("/login");
+  }
+
+  if (isPublicPath(pathname)) {
+    return supabaseResponse;
+  }
+
   const isProtected =
     matchesPrefix(pathname, MEMBER_PREFIXES) ||
     matchesPrefix(pathname, TREASURER_PREFIXES) ||
-    matchesPrefix(pathname, AUDITOR_PREFIXES);
+    matchesPrefix(pathname, AUDITOR_PREFIXES) ||
+    matchesPrefix(pathname, SHARED_OPS_PREFIXES) ||
+    matchesPrefix(pathname, ADMIN_PREFIXES);
 
   if (isProtected && !isAuthenticated) {
-    return redirectTo("/login");
+    return redirectTo("/login", true);
   }
 
   if (!isAuthenticated) {
     return supabaseResponse;
   }
 
-  const role = claims ? roleFromClaims(claims) : null;
+  // Admin: account management (+ own profile) only — no ops or member portal.
+  if (role === "ADMIN") {
+    const adminAllowed =
+      matchesPrefix(pathname, ADMIN_PREFIXES) ||
+      matchesPrefix(pathname, ["/profile"]);
+    if (!adminAllowed) {
+      return redirectTo("/unauthorized");
+    }
+    return supabaseResponse;
+  }
+
+  if (matchesPrefix(pathname, SHARED_OPS_PREFIXES)) {
+    if (role !== "TREASURER" && role !== "AUDITOR") {
+      return redirectTo("/unauthorized");
+    }
+  }
 
   if (matchesPrefix(pathname, TREASURER_PREFIXES)) {
-    if (role !== "TREASURER" && role !== "ADMIN") {
+    if (role !== "TREASURER") {
       return redirectTo("/unauthorized");
     }
   }
 
   if (matchesPrefix(pathname, AUDITOR_PREFIXES)) {
-    if (role !== "AUDITOR" && role !== "ADMIN") {
+    if (role !== "AUDITOR") {
       return redirectTo("/unauthorized");
     }
   }
 
-  // Member-mobile routes: any authenticated app user may access.
-  if (matchesPrefix(pathname, MEMBER_PREFIXES) && !role) {
-    // Still require a known app role in JWT once roles are provisioned.
-    // Allow through so first-login / Prisma-synced users aren't locked out;
-    // Server Actions re-check against the Prisma User.role source of truth.
+  if (matchesPrefix(pathname, ADMIN_PREFIXES)) {
+    return redirectTo("/unauthorized");
   }
+
+  // Fund routes: MEMBER / TREASURER / AUDITOR may access.
+  // Server Actions re-check against the Prisma User.role source of truth.
 
   return supabaseResponse;
 }

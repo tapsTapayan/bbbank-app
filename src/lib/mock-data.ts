@@ -9,7 +9,7 @@ export type MockPaymentSubmission = {
   targetType: "CONTRIBUTION" | "LOAN_AMORTIZATION";
   targetLabel: string;
   amount: number;
-  paymentChannel: "GCASH" | "MAYA" | "BANK_TRANSFER" | "CASH";
+  paymentChannel: "GCASH" | "MAYA" | "BANK_TRANSFER" | "OTHER_DIGITAL" | "CASH";
   referenceNumber: string;
   receiptUrl: string;
   status: "PENDING_VERIFICATION" | "VERIFIED" | "REJECTED" | "AUDITED" | "FLAGGED";
@@ -83,7 +83,7 @@ function buildReceiptSvg(opts: {
   <text x="48" y="420" font-family="system-ui,sans-serif" font-size="12" fill="#94a3b8">From</text>
   <text x="48" y="448" font-family="system-ui,sans-serif" font-size="14" fill="#334155">${opts.memberName} · •••• 4821</text>
   <text x="48" y="500" font-family="system-ui,sans-serif" font-size="12" fill="#94a3b8">To</text>
-  <text x="48" y="528" font-family="system-ui,sans-serif" font-size="14" fill="#334155">BBBank Sinking Fund</text>
+  <text x="48" y="528" font-family="system-ui,sans-serif" font-size="14" fill="#334155">BBB · CPE Sinking Fund</text>
   <rect x="48" y="580" width="384" height="64" rx="8" fill="#f1f5f9"/>
   <text x="240" y="618" text-anchor="middle" font-family="system-ui,sans-serif" font-size="11" fill="#64748b">Sample receipt for Phase 1 UI preview</text>
 </svg>

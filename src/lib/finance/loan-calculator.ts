@@ -29,7 +29,7 @@ export type InstallmentBalances = {
   amountPaid?: Decimal.Value;
 };
 
-function toMoney(value: Decimal.Value): Decimal {
+export function toMoney(value: Decimal.Value): Decimal {
   return new Decimal(value).toDecimalPlaces(2, Decimal.ROUND_HALF_UP);
 }
 

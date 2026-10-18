@@ -1,8 +1,14 @@
 import { PrismaClient } from "@/generated/prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 
+/**
+ * Bump when the generated client shape changes (e.g. User.prepaidCredit,
+ * PenaltyWaiver) so hot-reload does not keep a stale PrismaClient in `globalThis`.
+ */
+const PRISMA_SINGLETON_KEY = "bbbank.prisma.v5-cash-paid-at";
+
 const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined;
+  prismaByKey?: Record<string, PrismaClient | undefined>;
 };
 
 function createPrismaClient() {
@@ -19,8 +25,9 @@ function createPrismaClient() {
  * Singleton Prisma client (Prisma 7 requires a driver adapter).
  * Reuses the instance across hot reloads in development.
  */
-export const prisma = globalForPrisma.prisma ?? createPrismaClient();
+const cache = (globalForPrisma.prismaByKey ??= {});
+export const prisma = cache[PRISMA_SINGLETON_KEY] ?? createPrismaClient();
 
 if (process.env.NODE_ENV !== "production") {
-  globalForPrisma.prisma = prisma;
+  cache[PRISMA_SINGLETON_KEY] = prisma;
 }

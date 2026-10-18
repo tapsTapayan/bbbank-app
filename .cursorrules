@@ -1,4 +1,4 @@
-# Project Context: Multi-User Sinking Fund & Micro-Lending PWA
+# Project Context: BBB — CPE Department Sinking-fund System
 
 ## Core Tech Stack
 - Framework: Next.js 15+ (App Router), React, TypeScript (strict mode)
@@ -9,7 +9,7 @@
 - PWA: Serwist or @ducanh2912/next-pwa
 
 ## Architectural & Financial Rules (STRICT)
-1. **Exact Currency Math**: Never use standard JavaScript floats for money. Use `Decimal` in Prisma (`@db.Numeric(12, 2)`) or store amounts in integer centavos. Default currency is Philippine Peso (`₱` / `PHP`).
+1. **Exact Currency Math**: Never use standard JavaScript floats for money. Use `Decimal` in Prisma (`@db.Numeric(12, 2)`) or store amounts in integer centavos. Default currency is Philippine Peso (`₱` / `PHP`). All CPE policy math lives in `src/lib/finance/cpe-policy.ts` using Decimal.js.
 2. **Append-Only Double-Entry Ledger**: Never overwrite a user's balance directly. All verified contributions, loan disbursements, principal repayments, interest, and penalties must be recorded as immutable rows in a `LedgerEntry` table. Current balances are derived from verified ledger entries.
 3. **Maker-Checker-Auditor State Machine**:
    - `MEMBER`: Submits contributions/loan payments (`PENDING_VERIFICATION`) with receipt image & reference number, requests loans, views personal schedules.
@@ -19,6 +19,39 @@
 4. **Anti-Fraud**: Enforce a unique database constraint on `(paymentChannel, referenceNumber)` in `PaymentSubmission` to prevent duplicate receipt uploads.
 5. **Payment Allocation Order**: Loan repayments must allocate funds in this strict order: Penalties -> Interest -> Principal.
 
-## Dual-Interface UX Requirements
-- **Route Group `(member-mobile)`**: Mobile-first PWA interface with a fixed bottom navigation bar (`<768px`), summary cards, and swipeable bottom drawers (`vaul`) for quick receipt uploads and loan tracking.
-- **Route Group `(management-console)`**: Wide-screen desktop workstation (`>=768px`) with a collapsible sidebar, high-density `TanStack Table` grids, and a split-screen verification view (zoomable receipt image on the left, approval controls on the right).
+## CPE Sinking Fund Policy (STRICT — Rules #1–#5)
+
+### Rule #4 — Multi-Head Kinsenas Contributions
+- Minimum contribution: **₱250 / head / kinsenas** (due every 15th and 30th of the month, or last calendar day of February).
+- Each member has `User.headsCount >= 1`. Example: 4 heads → ₱1,000 per kinsenas / ₱2,000 per month.
+- `Contribution` rows are per kinsena (`kinsenaIndex` 1 = 15th, 2 = 30th/Feb last day) with `headsSnapshot`, `amountDue = 250 × headsSnapshot`, `dueDate`, and `graceDeadline`.
+
+### Rule #3 — 2-Day Grace Period & Late Fee
+- Late payment of a contribution or lapsed loan installment incurs **₱10 / head / day** AFTER a **2-calendar-day grace period**.
+- Example: Deadline March 15 → grace March 16 & 17 → paid March 20 = 3 chargeable days → `3 × ₱10 × 4 heads = ₱120`.
+- Formula: `chargeableDays = max(0, calendarDays(dueDate → asOf) − 2)`; `penalty = chargeableDays × 10 × headsCount`.
+- **Freeze** penalty accrual at the timestamp the member submits a valid receipt (`PaymentSubmission.createdAt` while `PENDING_VERIFICATION` / until verified). If the receipt is **REJECTED**, resume accrual from that point.
+- Daily cron (`/api/cron/penalties`) marks past-grace `UNPAID`/`PARTIAL` rows as `OVERDUE` and refreshes `daysDelayed` + `penaltyAmount`.
+
+### Rule #1 — Loanable Amount Cap
+- `Max Loanable = (Total Monthly Pool Collectibles × 0.50) × member.headsCount`.
+- Example: monthly collectibles ₱10,000, member 4 heads → `₱5,000 × 4 = ₱20,000`.
+- Also cap by **available cash** in the sinking fund pool so a disbursement never drives cash negative: `min(policyCap, availableCashPool)`.
+
+### Rule #2 — 2-Month 10% Loan Term
+- Flat interest of **10% of principal**, term **2 months** (payable as **4 kinsenas** or **2 monthly** amortizations).
+- Example: ₱20,000 principal → ₱2,000 interest → ₱22,000 total payable.
+- Lapsed loan payments past due date + 2-day grace incur Rule #3 penalty (`₱10 × headsCount × chargeableDays`).
+
+### Rule #5 — Active Member Eligibility
+- A member may request a new loan only when:
+  - `User.status === 'ACTIVE'`
+  - Zero overdue kinsenas contributions (`Contribution.status !== 'OVERDUE'` with unpaid balance)
+  - No blocking loans in `PENDING` | `APPROVED` | `ACTIVE` | `DEFAULTED`
+
+## Unified App Shell UX Requirements
+- **Single shell** (`AppShell` in route group `(app)`): One chrome for all roles. Role-filtered nav lists fund + ops destinations together — no separate member/console shells.
+- **Adaptive chrome (one pattern per breakpoint)**: `≥768px` collapsible sidebar only; `<768px` brand strip + bottom dock (≤5). Overflow destinations use a More sheet — never hamburger + bottom dock together.
+- **Content regions**: Fund pages use padded canvas scroll; ops pages (`/verify`, `/loans-admin`, `/audit`, `/members`) are full-bleed workstations.
+- **Member fund surfaces**: Heads count, kinsenas due (₱250 × heads), grace deadline, and late-fee breakdown on dashboard, `/pay`, and `/loans`.
+- **Treasurer `/verify`**: Split-screen verification with grace-period check and `₱10/head/day` penalty verification.

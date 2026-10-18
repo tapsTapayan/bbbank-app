@@ -1,5 +1,8 @@
-import "dotenv/config";
+import { config as loadEnv } from "dotenv";
 import { defineConfig, env } from "prisma/config";
+
+loadEnv({ path: ".env.local" });
+loadEnv();
 
 /**
  * Prisma ORM 7+ CLI config.
@@ -12,6 +15,10 @@ export default defineConfig({
     path: "prisma/migrations",
   },
   datasource: {
-    url: env("DATABASE_URL"),
+    // Prefer a *direct* Postgres host for migrate/db push:
+    //   db.<project-ref>.supabase.co:5432
+    // Session pooler (*.pooler.supabase.com:5432) often returns P1001 from
+    // local networks. Transaction pooler (:6543) is for the app runtime only.
+    url: process.env.DIRECT_URL ?? env("DATABASE_URL"),
   },
 });
