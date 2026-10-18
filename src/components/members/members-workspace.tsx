@@ -83,8 +83,8 @@ export function MembersWorkspace({
 
   return (
     <OpsWorkstation
-      title="Member & Role Directory"
-      description={`${users.length} accounts · ${activeHeadsTotal} active member heads (${formatPHP(activeHeadsTotal * contributionPerHead)} / kinsenas pool)`}
+      title="Members"
+      description={`${users.length} accounts · ${activeHeadsTotal} heads · ${formatPHP(activeHeadsTotal * contributionPerHead)} / kinsenas`}
       actions={
         <div className="flex flex-wrap items-center gap-2">
           <button

@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   Flag,
   Loader2,
-  ShieldCheck,
 } from "lucide-react";
 import { clsx } from "clsx";
 import { auditPaymentSubmission } from "@/actions/audit";
@@ -84,8 +83,7 @@ export function AuditWorkspace({ queue }: { queue: AuditQueueItem[] }) {
 
   return (
     <OpsWorkstation
-      title="Auditor Ledger Desk"
-      description="Seal verified records as immutable AUDITED or flag discrepancies"
+      title="Audit"
       padded={false}
       actions={
         <>
@@ -106,8 +104,8 @@ export function AuditWorkspace({ queue }: { queue: AuditQueueItem[] }) {
       {queue.length === 0 ? (
         <EmptyState
           icon={<BookOpenCheck className="h-5 w-5" aria-hidden />}
-          title="Audit Queue Clear"
-          description="All Treasurer-verified submissions have been audited."
+          title="Queue clear"
+          description="No verified submissions awaiting audit."
           className="px-[var(--page-pad-x)]"
         />
       ) : (
@@ -121,7 +119,7 @@ export function AuditWorkspace({ queue }: { queue: AuditQueueItem[] }) {
               [
                 ["queue", `Queue (${queue.length})`],
                 ["receipt", "Receipt"],
-                ["decide", "Audit Seal"],
+                ["decide", "Decide"],
               ] as const
             ).map(([id, label]) => (
               <button
@@ -196,10 +194,8 @@ export function AuditWorkspace({ queue }: { queue: AuditQueueItem[] }) {
                 />
               ) : selected && !selected.receiptStoragePath ? (
                 <div className="rl-ops-empty">
-                  <p className="type-title">Cash Attestation (No Image)</p>
-                  <p className="type-caption max-w-xs">
-                    Verified against physical cash logbook.
-                  </p>
+                  <p className="type-title">Cash (no image)</p>
+                  <p className="type-caption max-w-xs">Cash logbook</p>
                 </div>
               ) : (
                 <div className="rl-ops-empty">
@@ -215,7 +211,7 @@ export function AuditWorkspace({ queue }: { queue: AuditQueueItem[] }) {
               )}
             >
               <div className="rl-ops-toolbar">
-                <p className="type-label">Auditor Sign-Off</p>
+                <p className="type-label">Decision</p>
               </div>
               {selected ? (
                 <div className="flex min-h-0 flex-1 flex-col">
@@ -235,19 +231,13 @@ export function AuditWorkspace({ queue }: { queue: AuditQueueItem[] }) {
                       </p>
                     </div>
 
-                    <div className="rl-inset flex items-start gap-2.5">
-                      <ShieldCheck
-                        className="mt-0.5 h-4 w-4 shrink-0 text-[var(--brand)]"
-                        aria-hidden
-                      />
-                      <p className="type-caption leading-relaxed">
-                        Once marked <strong className="font-semibold">AUDITED</strong>, this submission and its ledger entries are permanently sealed and immutable.
-                      </p>
-                    </div>
+                    <p className="type-caption rl-inset">
+                      AUDITED records are immutable.
+                    </p>
 
                     <label className="rl-field">
                       <span className="rl-field-label">
-                        Auditor Remarks (Required to Flag)
+                        Remarks (required to flag)
                       </span>
                       <textarea
                         rows={3}
@@ -272,7 +262,7 @@ export function AuditWorkspace({ queue }: { queue: AuditQueueItem[] }) {
                         ) : (
                           <CheckCircle2 className="h-4 w-4" />
                         )}
-                        Seal Audited
+                        Mark audited
                       </button>
                       <button
                         type="button"

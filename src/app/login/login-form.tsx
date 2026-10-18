@@ -327,8 +327,7 @@ export function LoginForm() {
         />
         <div className="rl-auth-panel rl-stack">
           <PinInput
-            title="Enter 6-digit PIN"
-            subtitle="Unlock your account on this device"
+            title="Enter PIN"
             value={pin}
             onChange={setPin}
             onComplete={onPinComplete}
@@ -367,10 +366,7 @@ export function LoginForm() {
 
   return (
     <div className="w-full">
-      <AuthBrandHero
-        title="Sign in to BBB"
-        subtitle="Enter your member email or staff username"
-      />
+      <AuthBrandHero title="Sign in" />
 
       <form onSubmit={onPasswordSubmit} className="rl-auth-panel rl-stack">
         <label className="rl-field">

@@ -3,13 +3,7 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  CalendarPlus,
-  CheckCircle2,
-  Loader2,
-  Sparkles,
-  CalendarClock,
-} from "lucide-react";
+import { CalendarPlus, Loader2 } from "lucide-react";
 import {
   openCurrentKinsenaAction,
   openNextKinsenaAction,
@@ -64,23 +58,10 @@ export function KinsenasWorkspace({
 
   return (
     <OpsWorkstation
-      title="Kinsenas Period Generator"
-      description={
-        cycleName
-          ? `Active cycle: ${cycleName} · Generate 15th & EOM contribution rows (₱250 × heads)`
-          : "No active fund cycle configured"
-      }
+      title="Kinsenas"
+      description={cycleName ?? undefined}
       actions={
         <>
-          <span
-            className={
-              hasActiveCycle
-                ? "rl-pill rl-pill-verified"
-                : "rl-pill rl-pill-rejected"
-            }
-          >
-            {hasActiveCycle ? `Cycle: ${cycleName}` : "No Active Cycle"}
-          </span>
           {toast ? (
             <p
               className={`rl-alert !py-1.5 !px-3 type-caption ${
@@ -97,11 +78,9 @@ export function KinsenasWorkspace({
       <div className="mx-auto max-w-4xl rl-stack">
         {!hasActiveCycle ? (
           <div className="rl-alert rl-alert-warn flex flex-wrap items-center justify-between gap-3">
-            <span>
-              Create or activate a fund cycle before opening kinsenas contribution periods.
-            </span>
+            <span>Activate a fund cycle first.</span>
             <Link href="/cycle" className="rl-btn rl-btn-primary rl-btn-sm">
-              Configure Cycle Settings
+              Cycle settings
             </Link>
           </div>
         ) : null}
@@ -111,18 +90,13 @@ export function KinsenasWorkspace({
           <div className="rl-vault-body">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="rl-vault-eyebrow">Recommended Bulk Action</p>
-                <h2 className="mt-1 text-xl font-bold text-white">
-                  Synchronize Payable Window (YTD + Next Kinsena)
+                <h2 className="text-xl font-bold text-white">
+                  Open payable window
                 </h2>
-                <p className="mt-1.5 max-w-2xl text-xs leading-relaxed text-white/80">
-                  Idempotently creates all 15th & EOM contribution rows from the start of the active cycle through the upcoming kinsena so members can settle past-due, current, or advance obligations immediately.
+                <p className="mt-1.5 text-xs text-white/80">
+                  Cycle start through next kinsena · ₱250 × heads
                 </p>
               </div>
-              <span className="rl-vault-badge">
-                <Sparkles className="h-3.5 w-3.5" aria-hidden />
-                Idempotent
-              </span>
             </div>
 
             <div className="pt-2">
@@ -137,7 +111,7 @@ export function KinsenasWorkspace({
                 ) : (
                   <CalendarPlus className="h-4 w-4" />
                 )}
-                Open All Payable Periods (YTD + Next)
+                Open YTD + next
               </button>
             </div>
           </div>
@@ -156,10 +130,6 @@ export function KinsenasWorkspace({
                 </span>
               </div>
               <h2 className="type-heading mt-2">{previewCurrent.label}</h2>
-              <p className="type-caption mt-1.5 flex items-center gap-1.5">
-                <CalendarClock className="h-3.5 w-3.5" aria-hidden />
-                Generates ₱250 × heads rows for the current half-month window.
-              </p>
             </div>
             <button
               type="button"
@@ -172,23 +142,19 @@ export function KinsenasWorkspace({
               ) : (
                 <CalendarPlus className="h-4 w-4" />
               )}
-              Open Current Kinsena
+              Open current
             </button>
           </div>
 
           <div className="rl-desk rl-desk-section flex flex-col justify-between">
             <div>
               <div className="flex items-center justify-between gap-2">
-                <span className="type-label">Next Kinsena (Advance)</span>
+                <span className="type-label">Next kinsena</span>
                 <span className="rl-pill rl-pill-neutral">
                   Kinsena #{previewNext.kinsenaIndex}
                 </span>
               </div>
               <h2 className="type-heading mt-2">{previewNext.label}</h2>
-              <p className="type-caption mt-1.5 flex items-center gap-1.5">
-                <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
-                Opens the upcoming kinsena early so members can pay in advance.
-              </p>
             </div>
             <button
               type="button"
@@ -201,7 +167,7 @@ export function KinsenasWorkspace({
               ) : (
                 <CalendarPlus className="h-4 w-4" />
               )}
-              Open Next Kinsena
+              Open next
             </button>
           </div>
         </div>

@@ -8,7 +8,7 @@ type PageMastheadProps = {
   className?: string;
 };
 
-/** Fund-page masthead — structured header with eyebrow, title, subtitle, and actions. */
+/** Fund-page masthead — title first, optional meta line, actions. */
 export function PageMasthead({
   eyebrow,
   title,
@@ -19,12 +19,10 @@ export function PageMasthead({
   return (
     <header className={clsx("rl-masthead", className)}>
       <div className="min-w-0 flex-1">
-        {eyebrow ? <p className="type-label mb-1.5">{eyebrow}</p> : null}
+        {eyebrow ? <p className="type-label">{eyebrow}</p> : null}
         <h1 className="type-display">{title}</h1>
         {description ? (
-          <p className="type-body-sm type-muted mt-1.5 max-w-2xl">
-            {description}
-          </p>
+          <p className="type-body-sm type-muted">{description}</p>
         ) : null}
       </div>
       {actions ? (

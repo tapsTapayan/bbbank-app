@@ -160,8 +160,7 @@ export function PassesWorkspace({
 
   return (
     <OpsWorkstation
-      title="Penalty Passes & Waivers"
-      description="Grant authorized CPE Rule #3 late-fee waivers and freeze accrual"
+      title="Penalty passes"
       actions={
         <>
           <span className="rl-pill rl-pill-pending">
@@ -185,9 +184,7 @@ export function PassesWorkspace({
         <section className="rl-desk rl-desk-section">
           <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-end">
             <label className="rl-field">
-              <span className="rl-field-label">
-                Waiver Reason (Recorded on Pass Audit Log)
-              </span>
+              <span className="rl-field-label">Reason</span>
               <input
                 type="text"
                 value={reason}
@@ -250,8 +247,8 @@ export function PassesWorkspace({
         {targets.length === 0 ? (
           <EmptyState
             icon={<CheckCircle2 className="h-5 w-5" aria-hidden />}
-            title="Zero Late Penalties"
-            description="No unpaid obligations currently have accrued late penalties."
+            title="No late fees"
+            description="No accrued penalties on open obligations."
           />
         ) : (
           <>

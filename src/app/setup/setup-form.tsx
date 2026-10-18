@@ -35,10 +35,7 @@ export function SetupForm() {
 
   return (
     <div className="w-full">
-      <AuthBrandHero
-        title="Initialize System Admin"
-        subtitle="One-time sovereign ledger provisioning"
-      />
+      <AuthBrandHero title="Setup admin" />
 
       <form onSubmit={onSubmit} className="rl-auth-panel rl-stack">
         <label className="rl-field">

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Loader2, KeyRound, Mail, Lock, UserRound, ShieldCheck } from "lucide-react";
+import { Loader2, ShieldCheck } from "lucide-react";
 import { updateOwnEmail, updateOwnPassword } from "@/actions/auth";
 import { clearUserPin, setUserPin } from "@/actions/pin";
 import { PinInput } from "@/components/auth/pin-input";
@@ -114,8 +114,7 @@ export function ProfileSettings({
   return (
     <FundCanvas>
       <PageHeader
-        eyebrow="Security & Identity"
-        title="Account Profile & PIN"
+        title="Profile"
         description={`${name} · ${loginId} · ${role}`}
       />
 
@@ -124,15 +123,9 @@ export function ProfileSettings({
         <div className="rl-fund-stack">
           <section className="rl-panel rl-stack" aria-labelledby="pin-heading">
             <div className="flex items-start justify-between gap-3 border-b border-[var(--border-subtle)] pb-3">
-              <div className="flex items-center gap-2">
-                <KeyRound
-                  className="h-4 w-4 text-[var(--brand)]"
-                  aria-hidden
-                />
-                <h2 className="type-title" id="pin-heading">
-                  6-Digit Quick Unlock PIN
-                </h2>
-              </div>
+              <h2 className="type-title" id="pin-heading">
+                PIN
+              </h2>
               <span
                 className={`rl-pill ${
                   hasPin ? "rl-pill-verified" : "rl-pill-neutral"
@@ -141,10 +134,6 @@ export function ProfileSettings({
                 {hasPin ? "PIN Active" : "Not Set"}
               </span>
             </div>
-
-            <p className="type-body-sm type-muted">
-              Configure a 6-digit PIN once and use it for instant unlock on any device where you remember this account.
-            </p>
 
             {pinMessage ? (
               <p className="rl-alert rl-alert-ok">{pinMessage}</p>
@@ -190,7 +179,7 @@ export function ProfileSettings({
                       setPinStep("create");
                     }}
                   >
-                    Create 6-Digit PIN
+                    Create PIN
                   </button>
                 )}
               </div>
@@ -372,17 +361,9 @@ export function ProfileSettings({
             className="rl-panel rl-stack"
             aria-labelledby="identity-heading"
           >
-            <div className="flex items-center gap-2 border-b border-[var(--border-subtle)] pb-3">
-              {canEditEmail ? (
-                <Mail className="h-4 w-4 text-[var(--brand)]" aria-hidden />
-              ) : (
-                <UserRound
-                  className="h-4 w-4 text-[var(--brand)]"
-                  aria-hidden
-                />
-              )}
+            <div className="border-b border-[var(--border-subtle)] pb-3">
               <h2 className="type-title" id="identity-heading">
-                {canEditEmail ? "Sign-In Email Address" : "Sign-In Identity"}
+                {canEditEmail ? "Email" : "Login ID"}
               </h2>
             </div>
 
@@ -398,9 +379,6 @@ export function ProfileSettings({
                     onChange={(e) => setEmailValue(e.target.value)}
                     className="rl-input"
                   />
-                  <span className="rl-field-hint">
-                    Used for sign-in and official fund notifications.
-                  </span>
                 </label>
                 {emailError ? (
                   <p className="rl-alert rl-alert-error">{emailError}</p>
@@ -417,7 +395,7 @@ export function ProfileSettings({
                     {pending ? (
                       <Loader2 className="h-4 w-4 animate-spin" />
                     ) : null}
-                    Save Email Address
+                    Save
                   </button>
                 </div>
               </form>
@@ -426,11 +404,9 @@ export function ProfileSettings({
                 <p className="font-mono text-sm font-semibold text-[var(--ink)]">
                   {loginId}
                 </p>
-                <p className="type-caption mt-1">
-                  {username
-                    ? "Staff accounts authenticate via username."
-                    : "Contact a fund administrator to update your login identifier."}
-                </p>
+                {username ? (
+                  <p className="type-caption mt-1">Username sign-in</p>
+                ) : null}
               </div>
             )}
           </section>
@@ -442,8 +418,7 @@ export function ProfileSettings({
             className="rl-panel rl-stack"
             aria-labelledby="password-heading"
           >
-            <div className="flex items-center gap-2 border-b border-[var(--border-subtle)] pb-3">
-              <Lock className="h-4 w-4 text-[var(--brand)]" aria-hidden />
+            <div className="border-b border-[var(--border-subtle)] pb-3">
               <h2 className="type-title" id="password-heading">
                 Change Password
               </h2>

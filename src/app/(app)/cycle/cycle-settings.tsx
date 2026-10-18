@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { CalendarRange, CheckCircle2, Loader2, Save, Zap } from "lucide-react";
+import { CheckCircle2, Loader2, Save, Zap } from "lucide-react";
 import {
   activateFundCycle,
   startYearCycle,
@@ -104,8 +104,7 @@ export function CycleSettings({
 
   return (
     <OpsWorkstation
-      title="Fund Cycle & Policy Governance"
-      description="Configure CPE Sinking Fund rules #1–#5 and active calendar cycle"
+      title="Cycle settings"
       actions={
         <>
           <span
@@ -137,15 +136,13 @@ export function CycleSettings({
             <div className="rl-vault-body">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="rl-vault-eyebrow">One-Click Initialization</p>
-                  <h2 className="mt-1 text-lg font-bold text-white">
-                    Start Standard {currentYear} CPE Cycle
+                  <h2 className="text-lg font-bold text-white">
+                    Quick start {currentYear}
                   </h2>
-                  <p className="mt-1 text-xs leading-relaxed text-white/80">
-                    Activates {currentYear} with standard CPE rules (₱250/head, 2-day grace, ₱10/head/day late fee, 10% 2-month loan) and opens year-to-date through next kinsena.
+                  <p className="mt-1 text-xs text-white/80">
+                    ₱250/head · 2-day grace · ₱10/head/day late · 10% 2-mo loan
                   </p>
                 </div>
-                <Zap className="h-5 w-5 shrink-0 text-white/80" aria-hidden />
               </div>
 
               <div className="pt-1">
@@ -160,7 +157,7 @@ export function CycleSettings({
                   ) : (
                     <Zap className="h-4 w-4" />
                   )}
-                  Activate {currentYear} Cycle + Open Kinsenas
+                  Activate {currentYear}
                 </button>
               </div>
             </div>
@@ -202,15 +199,9 @@ export function CycleSettings({
 
         {/* Right Column: Fine-Grained Policy Rules Form */}
         <form onSubmit={save} className="rl-desk rl-desk-section">
-          <div className="flex items-center gap-2">
-            <CalendarRange
-              className="h-4 w-4 text-[var(--brand)]"
-              aria-hidden
-            />
-            <h2 className="type-title">
-              {form.id ? "Edit Cycle Policy Parameters" : "Create New Cycle"}
-            </h2>
-          </div>
+          <h2 className="type-title">
+            {form.id ? "Edit cycle" : "New cycle"}
+          </h2>
 
           <div className="grid gap-3.5 sm:grid-cols-2">
             <label className="rl-field sm:col-span-2">
@@ -331,7 +322,7 @@ export function CycleSettings({
               onChange={(e) => setActivate(e.target.checked)}
               className="h-4 w-4 rounded border-[var(--border)] accent-[var(--brand)]"
             />
-            Activate this cycle & open payable kinsenas
+            Activate and open kinsenas
           </label>
 
           <button
@@ -344,7 +335,7 @@ export function CycleSettings({
             ) : (
               <Save className="h-4 w-4" />
             )}
-            Save Cycle Configuration
+            Save
           </button>
         </form>
       </div>

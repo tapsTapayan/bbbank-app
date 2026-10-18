@@ -38,7 +38,7 @@ export function EmptyState({
       )}
     >
       {icon ? (
-        <div className="mb-1 flex h-12 w-12 items-center justify-center rounded-[var(--radius)] bg-[var(--brand-soft)] text-[var(--brand)]">
+        <div className="mb-1 flex h-9 w-9 items-center justify-center rounded-[var(--radius)] bg-[var(--brand-soft)] text-[var(--brand)]">
           {icon}
         </div>
       ) : null}

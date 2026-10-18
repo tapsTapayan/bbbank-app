@@ -11,51 +11,56 @@
   --palette-midnight: #001529;
   --palette-white: #ffffff;
 
-  /* Typographic Ink Hierarchy */
-  --ink: #001529;
-  --ink-secondary: #2c3a4b;
-  --ink-muted: #556270;
-  --ink-faint: #8492a2;
+  /* Typographic Ink Hierarchy — softened for calmer reading */
+  --ink: #0d1f33;
+  --ink-secondary: #3d4d5f;
+  --ink-muted: #6b7a8a;
+  --ink-faint: #9aa6b4;
 
-  /* Architectural Surfaces */
-  --surface: #f2f5f8;
-  --surface-subtle: #f8fafc;
+  /* Architectural Surfaces — airy, low-contrast canvas */
+  --surface: #f6f8fb;
+  --surface-subtle: #fafbfd;
   --surface-elevated: #ffffff;
-  --surface-hover: #edf2f7;
-  --app-chrome: #ebeff5;
+  --surface-hover: #f0f3f8;
+  --app-chrome: #f1f4f8;
 
-  /* Sovereign Vault Dark Surface (Navy/Midnight only) */
-  --surface-vault: linear-gradient(135deg, #001529 0%, #0a2342 52%, #11335d 100%);
-  --vault-border: rgb(255 255 255 / 0.12);
-  --vault-surface: rgb(255 255 255 / 0.07);
+  /* Vault — same navy family, quieter gradient */
+  --surface-vault: linear-gradient(
+    145deg,
+    #0a1e36 0%,
+    #123052 55%,
+    #1a4068 100%
+  );
+  --vault-border: rgb(255 255 255 / 0.1);
+  --vault-surface: rgb(255 255 255 / 0.06);
   --vault-ink: #ffffff;
-  --vault-ink-muted: rgb(255 255 255 / 0.72);
+  --vault-ink-muted: rgb(255 255 255 / 0.68);
 
-  /* Structural Hairlines & Borders */
-  --border: #dde3ec;
-  --border-subtle: #e8edf3;
-  --border-strong: #c2ccd8;
+  /* Structural Hairlines — whisper borders */
+  --border: #e6ebf2;
+  --border-subtle: #eef2f7;
+  --border-strong: #d4dce7;
 
-  /* Brand Semantic Tokens */
+  /* Brand Semantic Tokens — softer fills, same navy hue */
   --brand: var(--palette-navy);
   --brand-strong: var(--palette-midnight);
-  --brand-soft: color-mix(in oklab, var(--palette-navy) 9%, white);
-  --brand-soft-hover: color-mix(in oklab, var(--palette-navy) 15%, white);
-  --brand-border: color-mix(in oklab, var(--palette-navy) 22%, transparent);
+  --brand-soft: color-mix(in oklab, var(--palette-navy) 6%, white);
+  --brand-soft-hover: color-mix(in oklab, var(--palette-navy) 10%, white);
+  --brand-border: color-mix(in oklab, var(--palette-navy) 14%, transparent);
   --brand-accent: var(--palette-navy);
 
-  /* Financial Status Semantics (WCAG AA+ Verified) */
-  --success: #0d6859;
-  --success-soft: #ecfdf5;
-  --success-border: color-mix(in oklab, #0d6859 24%, transparent);
+  /* Status — readable but less saturated soft fills */
+  --success: #1a6b5c;
+  --success-soft: color-mix(in oklab, #0d6859 6%, white);
+  --success-border: color-mix(in oklab, #0d6859 14%, transparent);
 
-  --warning: #946200;
-  --warning-soft: #fffbeb;
-  --warning-border: color-mix(in oklab, #946200 26%, transparent);
+  --warning: #8a6a14;
+  --warning-soft: color-mix(in oklab, #946200 7%, white);
+  --warning-border: color-mix(in oklab, #946200 16%, transparent);
 
-  --danger: #b42318;
-  --danger-soft: #fef2f2;
-  --danger-border: color-mix(in oklab, #b42318 25%, transparent);
+  --danger: #a83a32;
+  --danger-soft: color-mix(in oklab, #b42318 6%, white);
+  --danger-border: color-mix(in oklab, #b42318 14%, transparent);
 
   /* Motion & Physics */
   --duration-fast: 150ms;
@@ -66,23 +71,31 @@
   --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-in: cubic-bezier(0.4, 0, 1, 1);
 
-  /* Fluid Type Scale */
-  --text-2xs: 0.6875rem;
-  --text-xs: 0.75rem;
-  --text-sm: 0.875rem;
-  --text-base: 0.9375rem;
-  --text-md: 1rem;
-  --text-lg: 1.125rem;
-  --text-xl: clamp(1.25rem, 1.15rem + 0.5vw, 1.5rem);
-  --text-2xl: clamp(1.5rem, 1.3rem + 1vw, 2rem);
-  --text-3xl: clamp(1.875rem, 1.6rem + 1.4vw, 2.5rem);
-  --text-4xl: clamp(2.125rem, 1.8rem + 1.8vw, 3rem);
+  /*
+   * Type scale — distinct optical steps (not a crowded ladder).
+   * Fluid sizes reserved for display / metric roles only.
+   */
+  --text-2xs: 0.6875rem; /* 11 — overlines */
+  --text-xs: 0.75rem;    /* 12 — captions, pills */
+  --text-sm: 0.8125rem;  /* 13 — secondary body, meta */
+  --text-base: 0.9375rem;/* 15 — primary reading */
+  --text-md: 1rem;       /* 16 — card titles */
+  --text-lg: 1.125rem;   /* 18 — section headings */
+  --text-xl: 1.25rem;    /* 20 — ops page titles */
+  --text-2xl: clamp(1.25rem, 1.15rem + 0.45vw, 1.5rem);   /* page display */
+  --text-3xl: clamp(1.375rem, 1.25rem + 0.55vw, 1.75rem);  /* metrics */
+  --text-4xl: clamp(1.5rem, 1.35rem + 0.7vw, 1.875rem);    /* hero metrics */
 
-  --leading-xs: 1.125rem;
-  --leading-sm: 1.35rem;
-  --leading-base: 1.5rem;
-  --leading-lg: 1.6rem;
-  --leading-xl: 1.3;
+  /* Line-height: tighter for display, open for reading */
+  --leading-xs: 1.35;
+  --leading-sm: 1.45;
+  --leading-base: 1.55;
+  --leading-lg: 1.5;
+  --leading-title: 1.35;
+  --leading-heading: 1.25;
+  --leading-display: 1.15;
+  --leading-metric: 1.05;
+  --leading-xl: 1.25;
   --leading-2xl: 1.15;
 
   /* 4pt / 8pt Spatial Rhythm */
@@ -98,48 +111,55 @@
   --space-10: 2.5rem;   /* 40px */
   --space-12: 3rem;     /* 48px */
 
-  /* Interactive & Chrome Dimensions */
-  --control-h-sm: 2.25rem; /* 36px */
-  --control-h: 2.75rem;    /* 44px — Apple/Material touch floor */
-  --control-h-lg: 3.125rem;/* 50px */
-  --header-h: 3.5rem;      /* 56px */
-  --nav-h: 4.125rem;       /* 66px */
-  --sidebar-w: 16rem;      /* 256px */
-  --sidebar-w-collapsed: 4.5rem; /* 72px */
-  --rail-w: 4.5rem;        /* 72px */
+  /* Semantic spacing — prefer these over ad-hoc gaps (breathable defaults) */
+  --space-inline: var(--space-2);   /* icon ↔ label */
+  --space-tight: var(--space-3);    /* related controls */
+  --space-related: var(--space-5);  /* fields in a form */
+  --space-group: var(--space-6);    /* blocks inside a card */
+  --space-block: var(--space-8);    /* cards in a column */
+  --space-section: var(--space-10); /* major page sections */
+
+  /* Interactive & Chrome Dimensions — restrained, consistent */
+  --control-h-sm: 2rem;    /* 32px */
+  --control-h: 2.5rem;     /* 40px */
+  --control-h-lg: 2.75rem; /* 44px */
+  --header-h: 3.25rem;     /* 52px */
+  --nav-h: 3.75rem;        /* 60px */
+  --sidebar-w: 15rem;      /* 240px */
+  --sidebar-w-collapsed: 4.25rem; /* 68px */
+  --rail-w: 4.25rem;
 
   /* Container & Viewport Geometry */
   --content-narrow: 44rem;
   --content-max: 74rem;
   --content-wide: 84rem;
-  --page-gap: var(--space-5);
-  --page-pad-x: 1rem;
-  --page-pad-y: 1.25rem;
+  --page-gap: var(--space-8);
+  --page-pad-x: 1.25rem;
+  --page-pad-y: 1.5rem;
 
-  /* Architectural Radii */
-  --radius-xs: 0.25rem;
-  --radius-sm: 0.375rem;
-  --radius: 0.5rem;
-  --radius-md: 0.625rem;
-  --radius-card: 0.875rem;
-  --radius-lg: 1rem;
+  /*
+   * Radii — restrained & shared:
+   * sm → chips/marks · default → controls · card → panels · pill → status only
+   */
+  --radius-xs: 0.125rem; /* 2px */
+  --radius-sm: 0.25rem;  /* 4px */
+  --radius: 0.375rem;    /* 6px — buttons, inputs, chips */
+  --radius-md: 0.375rem; /* alias of default — keep one control radius */
+  --radius-card: 0.5rem; /* 8px — panels, desks, cards */
+  --radius-lg: 0.5rem;   /* alias of card — no oversized rounds */
   --radius-pill: 9999px;
 
-  /* Multi-Tier Elevation System */
-  --shadow-xs: 0 1px 2px rgb(0 21 41 / 0.03);
-  --shadow-soft:
-    0 1px 2px rgb(0 21 41 / 0.04),
-    0 3px 10px -2px rgb(0 21 41 / 0.04);
-  --shadow-card:
-    0 1px 3px rgb(0 21 41 / 0.05),
-    0 8px 20px -6px rgb(0 21 41 / 0.06);
+  /* Elevation — light, almost flat */
+  --shadow-xs: 0 1px 1px rgb(0 21 41 / 0.02);
+  --shadow-soft: 0 1px 2px rgb(0 21 41 / 0.03);
+  --shadow-card: 0 1px 2px rgb(0 21 41 / 0.03);
   --shadow-elevated:
-    0 4px 12px rgb(0 21 41 / 0.06),
-    0 18px 36px -8px rgb(0 21 41 / 0.12);
+    0 2px 8px rgb(0 21 41 / 0.04),
+    0 8px 24px -8px rgb(0 21 41 / 0.06);
   --shadow-vault:
-    0 12px 32px -8px rgb(0 21 41 / 0.28),
-    0 2px 6px rgb(0 21 41 / 0.14);
-  --shadow-focus: 0 0 0 3px color-mix(in oklab, var(--brand) 24%, transparent);
+    0 8px 28px -10px rgb(0 21 41 / 0.18),
+    0 2px 6px rgb(0 21 41 / 0.08);
+  --shadow-focus: 0 0 0 3px color-mix(in oklab, var(--brand) 16%, transparent);
 
   /* Z-Index Scale */
   --z-sticky: 20;
@@ -184,30 +204,30 @@
 
 @media (min-width: 640px) {
   :root {
-    --page-pad-x: 1.5rem;
-    --page-pad-y: 1.5rem;
+    --page-pad-x: 1.75rem;
+    --page-pad-y: 1.75rem;
   }
 }
 
 @media (min-width: 768px) {
   :root {
-    --page-gap: var(--space-6);
-    --page-pad-x: 2rem;
-    --page-pad-y: 1.75rem;
+    --page-gap: var(--space-10);
+    --page-pad-x: 2.25rem;
+    --page-pad-y: 2.125rem;
   }
 }
 
 @media (min-width: 1024px) {
   :root {
-    --page-pad-x: 2.25rem;
-    --page-pad-y: 2rem;
-    --sidebar-w: 16rem;
+    --page-pad-x: 2.75rem;
+    --page-pad-y: 2.375rem;
+    --sidebar-w: 15.5rem;
   }
 }
 
 @media (min-width: 1280px) {
   :root {
-    --page-pad-x: 2.75rem;
-    --page-pad-y: 2.25rem;
+    --page-pad-x: 3rem;
+    --page-pad-y: 2.5rem;
   }
 }

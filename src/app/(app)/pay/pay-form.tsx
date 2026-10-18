@@ -544,20 +544,16 @@ export function PayForm({
       noValidate
     >
       <PageHeader
-        eyebrow="Payment Desk"
-        title="Submit Contribution or Loan Payment"
-        description={`${headsCount} active head${headsCount === 1 ? "" : "s"} · ${formatPHP(kinsenasDue)} per kinsenas · ${formatPHP(monthlyDue)} per month`}
+        title="Pay"
+        description={`${headsCount} head${headsCount === 1 ? "" : "s"} · ${formatPHP(kinsenasDue)} / kinsenas · ${formatPHP(monthlyDue)} / month`}
       />
 
       {targets.length === 0 ? (
         <div className="rl-panel mx-auto max-w-lg py-12 text-center">
-          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-[var(--radius-card)] bg-[var(--success-soft)] text-[var(--success)]">
+          <div className="mx-auto mb-3 flex h-9 w-9 items-center justify-center rounded-[var(--radius)] bg-[var(--success-soft)] text-[var(--success)]">
             <CheckCircle2 className="h-6 w-6" aria-hidden />
           </div>
-          <p className="type-title">All Open Obligations Settled</p>
-          <p className="type-body-sm type-muted mt-1">
-            There are no open kinsenas periods or loan installments awaiting payment.
-          </p>
+          <p className="type-title">Nothing due</p>
           {setupHint ? (
             <div className="type-body-sm type-muted mt-3">{setupHint}</div>
           ) : null}
@@ -580,21 +576,17 @@ export function PayForm({
           {/* Left Rail: Total Open Dues + Interactive Obligation Selector */}
           <aside className="rl-pay-rail" aria-label="Open obligations">
             <div className="rounded-[var(--radius-md)] bg-[var(--surface-subtle)] p-4 ring-1 ring-[var(--border-subtle)]">
-              <div className="flex items-center justify-between gap-2">
-                <p className="type-label">Total Open Dues</p>
-                <span className="rl-pill rl-pill-audited">
-                  {dues.openCount} Open
-                </span>
-              </div>
+              <p className="type-label">Total Open Dues</p>
               <p className="type-metric mt-2">
                 <Money amount={dues.totalDues} metric />
               </p>
-              <p className="type-caption mt-1 font-mono tabular-nums">
-                {formatPHP(dues.baseTotal)} base
-                {dues.penaltyTotal > 0
-                  ? ` + ${formatPHP(dues.penaltyTotal)} late (${dues.overdueCount} overdue)`
-                  : " · No late fees"}
-              </p>
+              {dues.penaltyTotal > 0 ? (
+                <p className="type-caption mt-1 font-mono tabular-nums">
+                  {formatPHP(dues.baseTotal)} base +{" "}
+                  {formatPHP(dues.penaltyTotal)} late ({dues.overdueCount}{" "}
+                  overdue)
+                </p>
+              ) : null}
             </div>
 
             {useMapPicker && kinsenasYearMap ? (
@@ -716,22 +708,20 @@ export function PayForm({
               >
                 <div className="flex flex-wrap items-start justify-between gap-3 border-b border-[var(--border-subtle)] pb-4">
                   <div className="min-w-0">
+                    <p className="type-label sr-only" id="selected-target-heading">
+                      Selected period
+                    </p>
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="type-label" id="selected-target-heading">
-                        Active Obligation Target
-                      </p>
+                      <h2 className="type-heading">{selectedTitle}</h2>
                       {selected.isOverdue ? (
                         <span className="rl-pill rl-pill-rejected">Overdue</span>
                       ) : selected.isAdvance ? (
                         <span className="rl-pill rl-pill-audited">Advance</span>
-                      ) : (
-                        <span className="rl-pill rl-pill-verified">Open</span>
-                      )}
+                      ) : null}
                       {attentionFor("period") ? (
-                        <AttentionBadge label="Confirm target" />
+                        <AttentionBadge label="Confirm" />
                       ) : null}
                     </div>
-                    <h2 className="type-heading mt-1">{selectedTitle}</h2>
                     <p className="type-caption mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono tabular-nums">
                       <span>Due {formatUtcDate(selected.dueDate)}</span>
                       <span>·</span>
@@ -740,7 +730,7 @@ export function PayForm({
                   </div>
 
                   <div className="text-left sm:text-right">
-                    <p className="type-label">Suggested Amount</p>
+                    <p className="type-label">Amount due</p>
                     <p className="type-metric mt-1">
                       {formatPHP(selected.suggestedAmount)}
                     </p>
@@ -756,9 +746,6 @@ export function PayForm({
                 {/* Quick Amount Presets */}
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="type-caption font-medium">
-                      Quick fill:
-                    </span>
                     <button
                       type="button"
                       className={`rl-chip ${
@@ -768,8 +755,8 @@ export function PayForm({
                       }`}
                       onClick={() => applyAmountPreset(selected.suggestedAmount)}
                     >
-                      {hasLateFee ? "Period + Late Fee" : "Full Period Due"} (
-                      {formatPHP(selected.suggestedAmount)})
+                      {hasLateFee ? "Due + late" : "Due"}{" "}
+                      {formatPHP(selected.suggestedAmount)}
                     </button>
                     {hasLateFee ? (
                       <button
@@ -781,7 +768,7 @@ export function PayForm({
                         }`}
                         onClick={() => applyAmountPreset(selected.baseRemaining)}
                       >
-                        Base Only ({formatPHP(selected.baseRemaining)})
+                        Base {formatPHP(selected.baseRemaining)}
                       </button>
                     ) : null}
                     {selected.targetType === "CONTRIBUTION" &&
@@ -810,7 +797,7 @@ export function PayForm({
                     onClick={() => setDetailsOpen((o) => !o)}
                   >
                     <CalendarClock className="h-3.5 w-3.5" aria-hidden />
-                    <span>CPE Rule #3 Breakdown</span>
+                    <span>Late fee</span>
                     <ChevronDown
                       className={`h-3.5 w-3.5 transition-transform duration-200 ${
                         detailsOpen ? "rotate-180" : ""
@@ -823,7 +810,7 @@ export function PayForm({
                 {detailsOpen ? (
                   <div className="rl-inset space-y-1.5">
                     <p className="type-caption font-medium text-[var(--ink)]">
-                      Policy Due: {formatUtcDate(selected.dueDate)} · 2-Day Grace Ends:{" "}
+                      Due {formatUtcDate(selected.dueDate)} · Grace{" "}
                       {formatUtcDate(selected.graceDeadline)}
                     </p>
                     <p className="type-caption">{selected.lateFeeBreakdown}</p>
@@ -849,15 +836,9 @@ export function PayForm({
               aria-busy={scanning || undefined}
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <Receipt
-                    className="h-4 w-4 text-[var(--brand)]"
-                    aria-hidden
-                  />
-                  <h2 id="pay-proof-heading" className="type-title">
-                    {isCash ? "Cash Payment Attestation" : "1. Receipt Proof & AI Auto-Fill"}
-                  </h2>
-                </div>
+                <h2 id="pay-proof-heading" className="type-title">
+                  {isCash ? "Cash" : "Receipt"}
+                </h2>
                 {!isCash ? (
                   <button
                     type="button"
@@ -870,7 +851,7 @@ export function PayForm({
                     }}
                   >
                     <Banknote className="h-3.5 w-3.5" aria-hidden />
-                    Paying in cash instead?
+                    Cash payment
                   </button>
                 ) : (
                   <button
@@ -884,7 +865,7 @@ export function PayForm({
                     }}
                   >
                     <Receipt className="h-3.5 w-3.5" aria-hidden />
-                    Switch to digital receipt
+                    Digital receipt
                   </button>
                 )}
               </div>
@@ -903,7 +884,7 @@ export function PayForm({
                         className="h-6 w-6 animate-spin"
                         aria-hidden
                       />
-                      <span>Scanning receipt with AI OCR…</span>
+                      <span>Scanning…</span>
                     </div>
                   ) : null}
                   <button
@@ -917,18 +898,11 @@ export function PayForm({
                 </div>
               ) : (
                 <label className="rl-pay-dropzone">
-                  <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--brand-soft)] text-[var(--brand)]">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-[var(--radius)] bg-[var(--brand-soft)] text-[var(--brand)]">
                     <Camera className="h-5 w-5" aria-hidden />
                   </div>
                   <span className="type-body-sm font-semibold text-[var(--brand)]">
-                    {isCash
-                      ? "Attach optional cash acknowledgment photo"
-                      : "Upload or capture payment receipt"}
-                  </span>
-                  <span className="type-caption max-w-sm">
-                    {isCash
-                      ? "Cash payments do not require a receipt image, but you may attach one for your records."
-                      : "Supports GCash, Maya, and Bank Transfer screenshots. AI will automatically extract amount, date, and reference."}
+                    {isCash ? "Optional photo" : "Upload or capture receipt"}
                   </span>
                   <input
                     type="file"
@@ -968,12 +942,12 @@ export function PayForm({
                   )}
                   <span className="text-xs font-medium">
                     {scanning
-                      ? "Extracting amount, reference number, and date from receipt…"
+                      ? "Reading receipt…"
                       : scanFailed
-                        ? "Couldn’t auto-read receipt — please verify the fields below."
+                        ? "Couldn’t read receipt — check fields below."
                         : isValidReceipt === false
-                          ? "Image may not be a standard payment receipt — please verify details below."
-                          : confidenceNote ?? "Receipt details extracted. Please review before submitting."}
+                          ? "Unrecognized receipt — verify details."
+                          : confidenceNote ?? "Review extracted details."}
                   </span>
                 </div>
               ) : null}
@@ -986,11 +960,8 @@ export function PayForm({
             >
               <div className="border-b border-[var(--border-subtle)] pb-3">
                 <h2 id="pay-details-heading" className="type-title">
-                  {isCash ? "Confirm Cash Payment Details" : "2. Verify & Submit Payment Details"}
+                  Details
                 </h2>
-                <p className="type-caption mt-0.5">
-                  Ensure the amount, payment channel, date, and reference number match your transaction.
-                </p>
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
@@ -1155,10 +1126,10 @@ export function PayForm({
                     <Upload className="h-4 w-4" aria-hidden />
                   )}
                   {pending
-                    ? "Submitting for Treasurer Verification…"
+                    ? "Submitting…"
                     : !isCash && !compressedFile
-                      ? "Attach Receipt Proof Above to Submit"
-                      : `Submit ${formatPHP(Number(amount) || 0)} Payment`}
+                      ? "Attach receipt to submit"
+                      : `Submit ${formatPHP(Number(amount) || 0)}`}
                 </button>
               </div>
             </section>

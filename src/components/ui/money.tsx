@@ -19,7 +19,7 @@ export function Money({ amount, className, metric = false }: MoneyProps) {
     <span
       className={clsx(
         "type-data tabular-nums",
-        metric ? "type-metric" : "type-body font-semibold",
+        metric ? "type-metric" : "type-body font-semibold tracking-tight",
         className,
       )}
     >

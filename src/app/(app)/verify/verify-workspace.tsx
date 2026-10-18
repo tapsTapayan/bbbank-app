@@ -150,8 +150,7 @@ export function VerifyWorkspace({
 
   return (
     <OpsWorkstation
-      title="Treasurer Verification Desk"
-      description="Side-by-side receipt & CPE Rule #3 penalty verification"
+      title="Verify"
       padded={false}
       actions={
         <>
@@ -213,7 +212,7 @@ export function VerifyWorkspace({
           )}
         >
           <div className="rl-ops-toolbar">
-            <p className="type-label">Submissions Queue</p>
+            <p className="type-label">Queue</p>
             <span className="type-caption font-mono tabular-nums">
               {pendingItems.length} open
             </span>
@@ -221,7 +220,7 @@ export function VerifyWorkspace({
           <ul className="rl-ops-pane-scroll space-y-2 p-3">
             {pendingItems.length === 0 ? (
               <li className="rl-inset py-12 text-center type-body-sm type-muted">
-                Queue clear — all submissions verified.
+                Queue clear
               </li>
             ) : null}
             {pendingItems.map((item) => {
@@ -283,10 +282,7 @@ export function VerifyWorkspace({
             />
           ) : selected && !selected.receiptStoragePath ? (
             <div className="flex h-full min-h-[260px] flex-col items-center justify-center gap-3 px-6 text-center">
-              <div className="rl-ops-empty-icon">
-                <Building2 className="h-5 w-5" aria-hidden />
-              </div>
-              <p className="type-title">Cash Payment Attestation</p>
+              <p className="type-title">Cash payment</p>
               <p className="type-metric tabular-nums">
                 {new Date(selected.paidAt).toLocaleDateString("en-PH", {
                   month: "short",
@@ -295,24 +291,18 @@ export function VerifyWorkspace({
                   timeZone: "UTC",
                 })}
               </p>
-              <p className="type-caption max-w-xs leading-relaxed">
-                Member declared a physical cash payment on this date. Confirm against the Treasurer cash logbook before approving.
+              <p className="type-caption max-w-xs">
+                No receipt — confirm against cash logbook.
               </p>
             </div>
           ) : selected ? (
             <div className="flex h-full min-h-[260px] flex-col items-center justify-center gap-2 type-body-sm type-muted">
               <Loader2 className="h-5 w-5 animate-spin text-[var(--brand)]" />
-              <span>Loading encrypted receipt…</span>
+              <span>Loading receipt…</span>
             </div>
           ) : (
             <div className="rl-ops-empty">
-              <div className="rl-ops-empty-icon">
-                <CheckCircle2 className="h-5 w-5" aria-hidden />
-              </div>
               <p className="type-title">Select a submission</p>
-              <p className="type-caption max-w-xs">
-                Choose a pending receipt from the queue to verify side by side.
-              </p>
             </div>
           )}
         </section>
@@ -325,7 +315,7 @@ export function VerifyWorkspace({
           )}
         >
           <div className="rl-ops-toolbar">
-            <p className="type-label">Verification & Decision</p>
+            <p className="type-label">Decision</p>
             {selected ? (
               <span className="type-caption font-mono">
                 {selected.memberHeadsCount}H
@@ -353,7 +343,7 @@ export function VerifyWorkspace({
                     </dd>
                   </div>
                   <div>
-                    <dt className="type-label">Target Obligation</dt>
+                    <dt className="type-label">Target</dt>
                     <dd className="type-body-sm mt-0.5 font-medium">
                       {selected.targetLabel}
                     </dd>
@@ -381,9 +371,6 @@ export function VerifyWorkspace({
                     onChange={(e) => setCreditedAmount(e.target.value)}
                     className="rl-input font-mono text-base font-bold tabular-nums"
                   />
-                  <span className="rl-field-hint">
-                    Adjust if OCR or member entry differs from receipt.
-                  </span>
                 </label>
 
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -418,7 +405,7 @@ export function VerifyWorkspace({
 
                 <label className="rl-field" htmlFor="remarks">
                   <span className="rl-field-label">
-                    Treasurer Remarks (Required to Reject)
+                    Remarks (required to reject)
                   </span>
                   <textarea
                     id="remarks"
@@ -500,9 +487,7 @@ function CpePenaltyBadge({ item }: { item: VerifyQueueItem }) {
         ) : (
           <CalendarClock className="h-4 w-4 shrink-0" aria-hidden />
         )}
-        {item.isCatchUp
-          ? "Catch-Up Late Fee Check"
-          : "CPE Rule #3 Grace & Penalty Check"}
+        {item.isCatchUp ? "Catch-up late fee" : "Grace & late fee"}
       </div>
       <dl className="mt-2.5 space-y-1 text-xs">
         {item.obligationTotalRemaining != null ? (
@@ -524,7 +509,7 @@ function CpePenaltyBadge({ item }: { item: VerifyQueueItem }) {
         </div>
         <div className="flex justify-between gap-2">
           <dt className="opacity-80">
-            {item.gracePeriodDays}-Day Grace Ends
+            Grace ends
           </dt>
           <dd className="font-mono font-medium text-[var(--ink)]">
             {formatDate(item.graceDeadline)}
@@ -546,7 +531,7 @@ function CpePenaltyBadge({ item }: { item: VerifyQueueItem }) {
         </p>
       ) : item.penaltyFrozenAtSubmit ? (
         <p className="mt-2 text-[11px] font-medium opacity-85">
-          Accrual frozen at submission timestamp · rejecting resumes penalty
+          Frozen at submit · reject resumes accrual
         </p>
       ) : null}
     </div>
@@ -564,7 +549,7 @@ function AiMatchBadge({ item }: { item: VerifyQueueItem }) {
   if (status.kind === "none") {
     return (
       <div className="rounded-[var(--radius-md)] border border-[var(--border)] bg-[var(--surface-subtle)] px-3.5 py-2.5 type-caption">
-        No AI OCR telemetry attached to this submission
+        No OCR data on this submission
       </div>
     );
   }
@@ -573,7 +558,7 @@ function AiMatchBadge({ item }: { item: VerifyQueueItem }) {
     return (
       <div className="flex items-center gap-2 rounded-[var(--radius-md)] border border-[var(--success-border)] bg-[var(--success-soft)] px-3.5 py-2.5 text-xs font-bold text-[var(--success)]">
         <ShieldCheck className="h-4 w-4 shrink-0" aria-hidden />
-        AI OCR Match Verified (Amount & Reference)
+        OCR matches amount & reference
       </div>
     );
   }
@@ -582,7 +567,7 @@ function AiMatchBadge({ item }: { item: VerifyQueueItem }) {
     <div className="rounded-[var(--radius-md)] border border-[var(--warning-border)] bg-[var(--warning-soft)] p-3.5 text-[var(--warning)]">
       <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider">
         <ShieldAlert className="h-4 w-4 shrink-0" aria-hidden />
-        OCR vs. Member Entry Differs
+        OCR differs from entry
       </div>
       <dl className="mt-2 space-y-1 text-xs">
         <div className="flex justify-between gap-2">

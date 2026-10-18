@@ -23,10 +23,10 @@ export function OpsStage({
     <div className="rl-ops-root">
       <header className="rl-ops-header">
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5">
             <h1 className="type-heading">{title}</h1>
             {description ? (
-              <p className="type-body-sm type-muted truncate">{description}</p>
+              <p className="type-caption truncate">{description}</p>
             ) : null}
           </div>
         </div>

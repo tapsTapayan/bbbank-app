@@ -53,7 +53,7 @@ const ALL_NAV: readonly NavItem[] = [
   {
     id: "pay",
     href: "/pay",
-    label: "Pay Dues",
+    label: "Pay",
     icon: Upload,
     roles: ["MEMBER", "TREASURER", "AUDITOR"],
     section: "fund",
@@ -69,7 +69,7 @@ const ALL_NAV: readonly NavItem[] = [
   {
     id: "verify",
     href: "/verify",
-    label: "Verify Queue",
+    label: "Verify",
     icon: ClipboardCheck,
     roles: ["TREASURER"],
     section: "ops",
@@ -93,7 +93,7 @@ const ALL_NAV: readonly NavItem[] = [
   {
     id: "passes",
     href: "/passes",
-    label: "Penalty Passes",
+    label: "Passes",
     icon: TicketCheck,
     roles: ["TREASURER", "AUDITOR"],
     section: "ops",
@@ -101,7 +101,7 @@ const ALL_NAV: readonly NavItem[] = [
   {
     id: "audit",
     href: "/audit",
-    label: "Audit Ledger",
+    label: "Audit",
     icon: BookOpenCheck,
     roles: ["AUDITOR"],
     section: "ops",
@@ -117,7 +117,7 @@ const ALL_NAV: readonly NavItem[] = [
   {
     id: "cycle",
     href: "/cycle",
-    label: "Cycle Rules",
+    label: "Cycle",
     icon: Settings2,
     roles: ["ADMIN"],
     section: "ops",
@@ -125,7 +125,7 @@ const ALL_NAV: readonly NavItem[] = [
   {
     id: "profile",
     href: "/profile",
-    label: "Profile & PIN",
+    label: "Profile",
     icon: UserRound,
     roles: ["MEMBER", "TREASURER", "AUDITOR", "ADMIN"],
     section: "account",
@@ -214,9 +214,9 @@ function SidebarNav({
 }) {
   const sections = (
     [
-      { key: "fund", label: "Personal Fund" },
-      { key: "ops", label: "Treasury & Ops" },
-      { key: "account", label: "Security" },
+      { key: "fund", label: "Fund" },
+      { key: "ops", label: "Ops" },
+      { key: "account", label: "Account" },
     ] as const
   )
     .map((section) => ({

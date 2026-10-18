@@ -20,10 +20,7 @@ export function AccountRoster({
 }) {
   return (
     <div className="w-full">
-      <AuthBrandHero
-        title="Welcome back"
-        subtitle="Select a remembered account on this device"
-      />
+      <AuthBrandHero title="Welcome back" />
 
       <div className="rl-auth-panel rl-stack">
         <ul className="rl-stack-sm">

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { Loader2, KeyRound, ShieldCheck, ArrowLeft } from "lucide-react";
+import { Loader2, KeyRound, ArrowLeft } from "lucide-react";
 import { getUserPinStatus } from "@/actions/pin";
 import { PinInput } from "@/components/auth/pin-input";
 import { AuthBrandHero } from "@/components/brand/auth-shell";
@@ -77,19 +77,8 @@ export function RememberDevicePrompt({
       <div className="w-full">
         <AuthBrandHero
           title={`Remember ${name.split(" ")[0] ?? "this account"}?`}
-          subtitle="Enable quick 6-digit PIN unlock on this device"
         />
         <div className="rl-auth-panel rl-stack">
-          <div className="rl-inset flex items-start gap-3">
-            <ShieldCheck
-              className="mt-0.5 h-5 w-5 shrink-0 text-[var(--brand)]"
-              aria-hidden
-            />
-            <p className="type-caption leading-relaxed">
-              Your device credential is encrypted and bound to your account. You can revoke it anytime from the sign-in screen.
-            </p>
-          </div>
-
           {error ? <p className="rl-alert rl-alert-error">{error}</p> : null}
 
           <div className="rl-stack-sm">
@@ -140,11 +129,10 @@ export function RememberDevicePrompt({
   if (step === "enter-pin") {
     return (
       <div className="w-full">
-        <AuthBrandHero title="Verify PIN" subtitle="Confirm your account PIN" />
+        <AuthBrandHero title="Verify PIN" />
         <div className="rl-auth-panel rl-stack">
           <PinInput
-            title="Enter your PIN"
-            subtitle={`Use your ${PIN_LENGTH}-digit account PIN to link this device`}
+            title="Enter PIN"
             value={pin}
             onChange={setPin}
             error={error}
@@ -175,14 +163,10 @@ export function RememberDevicePrompt({
   if (step === "set-pin") {
     return (
       <div className="w-full">
-        <AuthBrandHero
-          title="Set Account PIN"
-          subtitle="Reusable across all your remembered devices"
-        />
+        <AuthBrandHero title="Set PIN" />
         <div className="rl-auth-panel rl-stack">
           <PinInput
-            title="Create a 6-digit PIN"
-            subtitle="Choose a secure sequence you can easily recall"
+            title="Create PIN"
             value={pin}
             onChange={setPin}
             error={error}
@@ -213,14 +197,10 @@ export function RememberDevicePrompt({
 
   return (
     <div className="w-full">
-      <AuthBrandHero
-        title="Confirm Account PIN"
-        subtitle="Re-enter your 6-digit PIN to save"
-      />
+      <AuthBrandHero title="Confirm PIN" />
       <div className="rl-auth-panel rl-stack">
         <PinInput
           title="Confirm PIN"
-          subtitle="Enter the same 6-digit PIN again"
           value={confirm}
           onChange={setConfirm}
           error={error}

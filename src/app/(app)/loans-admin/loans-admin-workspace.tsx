@@ -7,7 +7,6 @@ import {
   HandCoins,
   Loader2,
   XCircle,
-  CalendarClock,
 } from "lucide-react";
 import { clsx } from "clsx";
 import {
@@ -63,8 +62,7 @@ export function LoansAdminWorkspace({ loans }: { loans: LoanDeskRow[] }) {
 
   return (
     <OpsWorkstation
-      title="Treasurer Loan Desk"
-      description="Review, approve, and disburse member loan requests"
+      title="Loan desk"
       padded={false}
       actions={
         <>
@@ -91,8 +89,8 @@ export function LoansAdminWorkspace({ loans }: { loans: LoanDeskRow[] }) {
       {loans.length === 0 ? (
         <EmptyState
           icon={<HandCoins className="h-5 w-5" aria-hidden />}
-          title="No Open Loan Requests"
-          description="Pending and approved loan applications awaiting disbursement will appear here."
+          title="No open requests"
+          description="Pending and approved loans appear here."
           className="px-[var(--page-pad-x)]"
         />
       ) : (
@@ -118,7 +116,7 @@ export function LoansAdminWorkspace({ loans }: { loans: LoanDeskRow[] }) {
               className="rl-ops-tab"
               onClick={() => setMobilePane("detail")}
             >
-              Review & Disburse
+              Review
             </button>
           </div>
 
@@ -188,7 +186,7 @@ export function LoansAdminWorkspace({ loans }: { loans: LoanDeskRow[] }) {
               )}
             >
               <div className="rl-ops-toolbar">
-                <p className="type-label">Application Telemetry & Action</p>
+                <p className="type-label">Details</p>
               </div>
               <div className="rl-ops-pane-scroll p-5 sm:p-6">
                 {selected ? (
@@ -197,10 +195,7 @@ export function LoansAdminWorkspace({ loans }: { loans: LoanDeskRow[] }) {
                       <div className="rl-vault-body">
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
-                            <p className="rl-vault-eyebrow">
-                              Borrower Application
-                            </p>
-                            <h2 className="mt-1 text-xl font-bold text-white">
+                            <h2 className="text-xl font-bold text-white">
                               {selected.borrowerName}
                             </h2>
                             <p className="text-xs text-white/75">
@@ -213,8 +208,7 @@ export function LoansAdminWorkspace({ loans }: { loans: LoanDeskRow[] }) {
                         </div>
 
                         <div>
-                          <p className="rl-vault-eyebrow">Requested Principal</p>
-                          <p className="type-metric mt-1 text-white">
+                          <p className="type-metric text-white">
                             <Money
                               amount={selected.principalAmount}
                               metric
@@ -258,26 +252,17 @@ export function LoansAdminWorkspace({ loans }: { loans: LoanDeskRow[] }) {
                       </div>
                     </div>
 
-                    <div className="rl-inset flex items-center gap-2.5">
-                      <CalendarClock
-                        className="h-4 w-4 shrink-0 text-[var(--brand)]"
-                        aria-hidden
-                      />
-                      <p className="type-caption">
-                        Submitted on{" "}
-                        {new Date(selected.createdAt).toLocaleDateString(
-                          "en-PH",
-                          {
-                            month: "long",
-                            day: "numeric",
-                            year: "numeric",
-                          },
-                        )}
-                        . Disbursing records an immutable{" "}
-                        <code className="font-mono">LOAN_DISBURSEMENT_OUT</code>{" "}
-                        ledger entry and generates the amortization schedule.
-                      </p>
-                    </div>
+                    <p className="type-caption rl-inset">
+                      Submitted{" "}
+                      {new Date(selected.createdAt).toLocaleDateString(
+                        "en-PH",
+                        {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        },
+                      )}
+                    </p>
 
                     <div className="grid gap-3 pt-2 sm:grid-cols-2">
                       {selected.status === "PENDING" ? (
@@ -293,7 +278,7 @@ export function LoansAdminWorkspace({ loans }: { loans: LoanDeskRow[] }) {
                             ) : (
                               <CheckCircle2 className="h-4 w-4" />
                             )}
-                            1. Approve Application
+                            Approve
                           </button>
                           <button
                             type="button"
@@ -302,7 +287,7 @@ export function LoansAdminWorkspace({ loans }: { loans: LoanDeskRow[] }) {
                             onClick={() => run(() => rejectLoan(selected.id))}
                           >
                             <XCircle className="h-4 w-4" />
-                            Reject Request
+                            Reject
                           </button>
                         </>
                       ) : null}
@@ -321,8 +306,8 @@ export function LoansAdminWorkspace({ loans }: { loans: LoanDeskRow[] }) {
                             <HandCoins className="h-4 w-4" />
                           )}
                           {selected.status === "PENDING"
-                            ? "2. Disburse Funds (Approve First)"
-                            : `Disburse ${formatPHP(selected.principalAmount)} Now`}
+                            ? "Disburse (approve first)"
+                            : `Disburse ${formatPHP(selected.principalAmount)}`}
                         </button>
                       )}
                     </div>

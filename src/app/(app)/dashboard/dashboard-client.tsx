@@ -4,13 +4,8 @@ import Link from "next/link";
 import {
   ChevronRight,
   AlertTriangle,
-  HandCoins,
-  CheckCircle2,
   ArrowRight,
-  Wallet,
   CalendarClock,
-  ReceiptText,
-  Sparkles,
 } from "lucide-react";
 import { formatPHP } from "@/lib/finance/loan-calculator";
 import {
@@ -87,11 +82,11 @@ function obligationTone(next: NextKinsenasObligation) {
 }
 
 const TONE_LABEL = {
-  pending: "Verification Pending",
-  late: "Late Fee Accruing",
-  catchup: "Catch-up Period",
-  grace: "Within 2-Day Grace",
-  due: "Upcoming Obligation",
+  pending: "Pending verification",
+  late: "Late fee",
+  catchup: "Catch-up",
+  grace: "Grace period",
+  due: "Due soon",
 } as const;
 
 export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
@@ -128,19 +123,13 @@ export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
   return (
     <FundCanvas>
       <PageHeader
-        eyebrow="Personal Sinking Fund"
         title={`Welcome, ${firstName}`}
-        description={`${headsCount} active head${headsCount === 1 ? "" : "s"} · ${formatPHP(kinsenasDue)} per kinsenas (${formatPHP(monthlyDue)} / month)${mapOverdue > 0 ? ` · ${mapOverdue} overdue period${mapOverdue === 1 ? "" : "s"}` : ""}`}
+        description={`${headsCount} head${headsCount === 1 ? "" : "s"} · ${formatPHP(kinsenasDue)} / kinsenas · ${formatPHP(monthlyDue)} / month${mapOverdue > 0 ? ` · ${mapOverdue} overdue` : ""}`}
         actions={
-          <div className="flex items-center gap-2">
-            <Link href={payHref} className="rl-btn rl-btn-primary">
-              Pay Dues
-              <ArrowRight className="h-4 w-4" aria-hidden />
-            </Link>
-            <Link href="/loans" className="rl-btn rl-btn-secondary">
-              Loan Calculator
-            </Link>
-          </div>
+          <Link href={payHref} className="rl-btn rl-btn-primary">
+            Pay
+            <ArrowRight className="h-4 w-4" aria-hidden />
+          </Link>
         }
       />
 
@@ -155,27 +144,26 @@ export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
               <div className="rl-vault-body">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="rl-vault-eyebrow" id="next-due-heading">
-                      Next Kinsenas Obligation
-                    </p>
-                    <p className="mt-1 text-base font-semibold text-white">
+                    <p className="text-base font-semibold text-white" id="next-due-heading">
                       {nextKinsenas.periodLabel} ·{" "}
                       {nextKinsenas.kinsenaIndex === 1
                         ? "1st Kinsenas (15th)"
                         : "2nd Kinsenas (EOM)"}
                     </p>
                   </div>
-                  <span
-                    className={`rl-vault-badge rl-vault-badge--${
-                      tone === "late"
-                        ? "late"
-                        : tone === "grace" || tone === "pending"
-                          ? "grace"
-                          : "default"
-                    }`}
-                  >
-                    {TONE_LABEL[tone]}
-                  </span>
+                  {tone !== "due" ? (
+                    <span
+                      className={`rl-vault-badge rl-vault-badge--${
+                        tone === "late"
+                          ? "late"
+                          : tone === "grace" || tone === "pending"
+                            ? "grace"
+                            : "default"
+                      }`}
+                    >
+                      {TONE_LABEL[tone]}
+                    </span>
+                  ) : null}
                 </div>
 
                 <div>
@@ -184,8 +172,8 @@ export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
                   </p>
                   <p className="mt-1.5 font-mono text-xs text-white/75 tabular-nums">
                     {nextKinsenas.penaltyAmount > 0
-                      ? `${formatPHP(nextKinsenas.amountDue)} principal due + ${formatPHP(nextKinsenas.penaltyAmount)} late penalty`
-                      : `${formatPHP(nextKinsenas.amountDue)} base contribution (${nextKinsenas.headsSnapshot} head${nextKinsenas.headsSnapshot === 1 ? "" : "s"} × ₱250)`}
+                      ? `${formatPHP(nextKinsenas.amountDue)} due + ${formatPHP(nextKinsenas.penaltyAmount)} late`
+                      : `${formatPHP(nextKinsenas.amountDue)} (${nextKinsenas.headsSnapshot} × ₱250)`}
                   </p>
                 </div>
 
@@ -196,18 +184,9 @@ export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
                   </div>
                   <div className="rl-vault-meta-item">
                     <dt>
-                      {nextKinsenas.isCatchUp
-                        ? "Policy Grace Ended"
-                        : "2-Day Grace Ends"}
+                      Grace ends
                     </dt>
                     <dd>{formatUtcDate(nextKinsenas.graceDeadline)}</dd>
-                  </div>
-                  <div className="rl-vault-meta-item col-span-2 sm:col-span-1">
-                    <dt>Allocation</dt>
-                    <dd>
-                      {nextKinsenas.headsSnapshot} Head
-                      {nextKinsenas.headsSnapshot === 1 ? "" : "s"}
-                    </dd>
                   </div>
                 </dl>
 
@@ -220,14 +199,9 @@ export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
                       className="mt-0.5 h-4 w-4 shrink-0 text-red-300"
                       aria-hidden
                     />
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold text-red-100">
-                        Rule #3 Late Fee: {formatPHP(nextKinsenas.penaltyAmount)}
-                      </p>
-                      <p className="mt-0.5 text-xs text-red-200/85">
-                        {nextKinsenas.lateFeeBreakdown}
-                      </p>
-                    </div>
+                    <p className="min-w-0 text-xs font-semibold text-red-100">
+                      Late fee: {formatPHP(nextKinsenas.penaltyAmount)}
+                    </p>
                   </div>
                 )}
 
@@ -236,34 +210,19 @@ export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
                     href={payHref}
                     className="rl-btn rl-btn-vault rl-btn-lg flex-1 sm:flex-initial"
                   >
-                    Settle this period
+                    Pay
                     <ArrowRight className="h-4 w-4" aria-hidden />
                   </Link>
-                  <span className="text-xs text-white/65">
-                    Penalty freezes immediately upon receipt upload
-                  </span>
                 </div>
               </div>
             ) : (
               <div className="rl-vault-body">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="rl-vault-eyebrow">Obligation Status</p>
-                    <h2 className="mt-1 text-xl font-bold text-white">
-                      All Open Kinsenas Settled
-                    </h2>
-                  </div>
-                  <span className="rl-vault-badge rl-vault-badge--clear">
-                    <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
-                    In Good Standing
-                  </span>
-                </div>
-                <p className="max-w-lg text-sm leading-relaxed text-white/80">
-                  You have no outstanding kinsenas obligations due right now. You can review your annual contribution matrix below or submit an advance payment.
-                </p>
+                <h2 className="text-xl font-bold text-white">
+                  No open kinsenas
+                </h2>
                 <div className="pt-1">
                   <Link href="/pay" className="rl-btn rl-btn-vault">
-                    Open Payment Desk
+                    Pay advance
                     <ArrowRight className="h-4 w-4" aria-hidden />
                   </Link>
                 </div>
@@ -283,29 +242,17 @@ export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
               className={`rl-kpi-grid${prepaidCredit > 0 ? " rl-kpi-grid--3" : ""}`}
             >
               <div className="rl-kpi-card">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="type-label">Verified Equity</p>
-                  <Wallet
-                    className="h-4 w-4 text-[var(--brand)]"
-                    aria-hidden
-                  />
-                </div>
+                <p className="type-label">Equity</p>
                 <div>
                   <p className="rl-kpi-value">{formatPHP(totalEquity)}</p>
                   <p className="type-caption mt-1 tabular-nums">
-                    {formatPHP(monthlyDue)} / mo commitment
+                    {formatPHP(monthlyDue)} / month
                   </p>
                 </div>
               </div>
 
               <div className="rl-kpi-card">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="type-label">Active Loan</p>
-                  <HandCoins
-                    className="h-4 w-4 text-[var(--brand)]"
-                    aria-hidden
-                  />
-                </div>
+                <p className="type-label">Active Loan</p>
                 <div>
                   <p className="rl-kpi-value">{formatPHP(activeLoanBalance)}</p>
                   <Link
@@ -320,19 +267,10 @@ export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
 
               {prepaidCredit > 0 ? (
                 <div className="rl-kpi-card col-span-2 sm:col-span-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="type-label">Prepaid Credit</p>
-                    <Sparkles
-                      className="h-4 w-4 text-[var(--success)]"
-                      aria-hidden
-                    />
-                  </div>
-                  <div>
-                    <p className="rl-kpi-value text-[var(--success)]">
-                      {formatPHP(prepaidCredit)}
-                    </p>
-                    <p className="type-caption mt-1">Auto-applied to dues</p>
-                  </div>
+                  <p className="type-label">Prepaid Credit</p>
+                  <p className="rl-kpi-value text-[var(--success)]">
+                    {formatPHP(prepaidCredit)}
+                  </p>
                 </div>
               ) : null}
             </div>
@@ -381,24 +319,14 @@ export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
             aria-labelledby="recent-payments-heading"
           >
             <div className="rl-section-head border-b border-[var(--border-subtle)] pb-3">
-              <div className="flex items-center gap-2">
-                <ReceiptText
-                  className="h-4 w-4 text-[var(--brand)]"
-                  aria-hidden
-                />
-                <h2 className="type-title" id="recent-payments-heading">
-                  Recent Submissions
-                </h2>
-              </div>
-              <span className="type-caption">Last 30 days</span>
+              <h2 className="type-title" id="recent-payments-heading">
+                Recent payments
+              </h2>
             </div>
             {recentPayments.length === 0 ? (
               <div className="rl-dash-empty">
                 <p className="type-body-sm font-medium text-[var(--ink-secondary)]">
-                  No submissions in the last 30 days
-                </p>
-                <p className="type-caption mt-1">
-                  Uploaded receipts and cash attestations will appear here.
+                  No recent payments
                 </p>
               </div>
             ) : (
