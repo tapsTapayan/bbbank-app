@@ -9,19 +9,22 @@ import {
   CircleDot,
   Flag,
   HandCoins,
+  Pencil,
   Trash2,
   Upload,
   X,
   XCircle,
 } from "lucide-react";
 import { cancelPaymentSubmission } from "@/actions/payment-submission";
+import { EditPaymentSubmissionModal } from "@/components/finance/edit-payment-submission-modal";
 import { FundCanvas } from "@/components/system/frames/fund-canvas";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusPill, NeutralPill } from "@/components/ui/status-pill";
+import type { MemberPendingSubmission } from "@/lib/queries/member-pending-submissions";
 import type { MemberHistoryEvent } from "@/lib/queries/member-transaction-history";
 
-/** Submitted = awaiting review — members may delete/cancel. */
-function isCancellableSubmission(event: MemberHistoryEvent): boolean {
+/** Submitted = awaiting review — members may edit or delete. */
+function isEditableSubmission(event: MemberHistoryEvent): boolean {
   return (
     event.kind === "PAYMENT_SUBMITTED" &&
     event.canCancel === true &&
@@ -115,10 +118,12 @@ function HistoryDetailModal({
   event,
   onClose,
   onCancelled,
+  onEdit,
 }: {
   event: MemberHistoryEvent;
   onClose: () => void;
   onCancelled: () => void;
+  onEdit: (submissionId: string) => void;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -137,10 +142,10 @@ function HistoryDetailModal({
     };
   }, [onClose]);
 
-  const cancellable = isCancellableSubmission(event);
+  const editable = isEditableSubmission(event);
 
   function handleCancel() {
-    if (!cancellable || !event.submissionId) return;
+    if (!editable || !event.submissionId) return;
     if (!confirmCancel) {
       setConfirmCancel(true);
       setError(null);
@@ -238,7 +243,7 @@ function HistoryDetailModal({
             </div>
           ) : null}
 
-          {cancellable ? (
+          {editable ? (
             <div className="border-t border-[var(--border-subtle)] pt-4">
               {error ? (
                 <p className="rl-alert rl-alert-error mb-3" role="alert">
@@ -253,6 +258,16 @@ function HistoryDetailModal({
                 </p>
               ) : null}
               <div className="flex flex-wrap gap-2">
+                {!confirmCancel ? (
+                  <button
+                    type="button"
+                    className="rl-btn rl-btn-secondary rl-btn-sm"
+                    onClick={() => onEdit(event.submissionId!)}
+                  >
+                    <Pencil className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+                    Edit
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className={
@@ -268,7 +283,7 @@ function HistoryDetailModal({
                     ? "Deleting…"
                     : confirmCancel
                       ? "Confirm delete"
-                      : "Delete submission"}
+                      : "Delete"}
                 </button>
                 {confirmCancel ? (
                   <button
@@ -292,16 +307,18 @@ function HistoryDetailModal({
 function HistoryListCancel({
   event,
   onCancelled,
+  onEdit,
 }: {
   event: MemberHistoryEvent;
   onCancelled: () => void;
+  onEdit: (submissionId: string) => void;
 }) {
   const [pending, startTransition] = useTransition();
   const [confirm, setConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const cancellable = isCancellableSubmission(event);
+  const editable = isEditableSubmission(event);
 
-  if (!cancellable) return null;
+  if (!editable) return null;
 
   function handleCancel() {
     if (!confirm) {
@@ -334,6 +351,16 @@ function HistoryListCancel({
         </p>
       ) : null}
       <div className="flex flex-wrap gap-2">
+        {!confirm ? (
+          <button
+            type="button"
+            className="rl-btn rl-btn-secondary rl-btn-sm"
+            onClick={() => onEdit(event.submissionId!)}
+          >
+            <Pencil className="mr-1.5 h-3.5 w-3.5" aria-hidden />
+            Edit
+          </button>
+        ) : null}
         <button
           type="button"
           className={
@@ -349,7 +376,7 @@ function HistoryListCancel({
             ? "Deleting…"
             : confirm
               ? "Confirm delete"
-              : "Delete submission"}
+              : "Delete"}
         </button>
         {confirm ? (
           <button
@@ -366,10 +393,23 @@ function HistoryListCancel({
   );
 }
 
-export function HistoryClient({ events }: { events: MemberHistoryEvent[] }) {
+export function HistoryClient({
+  userId,
+  events,
+  pendingSubmissions,
+}: {
+  userId: string;
+  events: MemberHistoryEvent[];
+  pendingSubmissions: MemberPendingSubmission[];
+}) {
   const router = useRouter();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const selected = events.find((e) => e.id === selectedId) ?? null;
+  const editing =
+    editingId != null
+      ? (pendingSubmissions.find((s) => s.id === editingId) ?? null)
+      : null;
 
   const groups = new Map<string, MemberHistoryEvent[]>();
   for (const event of events) {
@@ -379,16 +419,22 @@ export function HistoryClient({ events }: { events: MemberHistoryEvent[] }) {
     groups.set(key, list);
   }
 
-  function refreshAfterCancel() {
+  function refreshAfterChange() {
     setSelectedId(null);
+    setEditingId(null);
     router.refresh();
+  }
+
+  function openEdit(submissionId: string) {
+    setSelectedId(null);
+    setEditingId(submissionId);
   }
 
   return (
     <FundCanvas>
       <PageHeader
         title="Transaction history"
-        description="Payments, verifications, and loan activity on your account. Unreviewed proofs can be cancelled."
+        description="Payments, verifications, and loan activity on your account. Unreviewed proofs can be edited or deleted."
       />
 
       {events.length === 0 ? (
@@ -454,7 +500,8 @@ export function HistoryClient({ events }: { events: MemberHistoryEvent[] }) {
                       </button>
                       <HistoryListCancel
                         event={event}
-                        onCancelled={refreshAfterCancel}
+                        onCancelled={refreshAfterChange}
+                        onEdit={openEdit}
                       />
                     </div>
                   </li>
@@ -465,11 +512,21 @@ export function HistoryClient({ events }: { events: MemberHistoryEvent[] }) {
         </div>
       )}
 
-      {selected ? (
+      {selected && !editing ? (
         <HistoryDetailModal
           event={selected}
           onClose={() => setSelectedId(null)}
-          onCancelled={refreshAfterCancel}
+          onCancelled={refreshAfterChange}
+          onEdit={openEdit}
+        />
+      ) : null}
+
+      {editing ? (
+        <EditPaymentSubmissionModal
+          submission={editing}
+          userId={userId}
+          onClose={() => setEditingId(null)}
+          onSaved={refreshAfterChange}
         />
       ) : null}
     </FundCanvas>

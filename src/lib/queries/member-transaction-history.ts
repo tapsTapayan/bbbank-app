@@ -34,7 +34,7 @@ export type MemberHistoryEvent = {
   allocations: string[];
   /**
    * PaymentSubmission id for PAYMENT_SUBMITTED rows.
-   * Members may cancel/delete while canCancel is true (awaiting review).
+   * Members may edit or cancel/delete while canCancel is true (awaiting review).
    */
   submissionId: string | null;
   /** True only for Submitted / PENDING_VERIFICATION — not a reviewed record. */
@@ -199,7 +199,7 @@ export async function getMemberTransactionHistory(
 
     const submitAllocations = storedAlloc;
 
-    // Submitted = not yet reviewed. Members may cancel/delete until treasurer acts.
+    // Submitted = not yet reviewed. Members may edit or cancel until treasurer acts.
     const awaitingReview = row.status === "PENDING_VERIFICATION";
     events.push({
       id: `pay-submit-${row.id}`,

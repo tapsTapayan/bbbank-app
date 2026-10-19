@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { ChevronRight, ArrowRight, CalendarClock } from "lucide-react";
+import { ChevronRight, ArrowRight, CalendarClock, Pencil } from "lucide-react";
 import { cancelPaymentSubmission } from "@/actions/payment-submission";
+import { EditPaymentSubmissionModal } from "@/components/finance/edit-payment-submission-modal";
 import { formatPHP } from "@/lib/finance/loan-calculator";
 import {
   formatUtcDate,
@@ -13,6 +14,7 @@ import {
 } from "@/lib/finance/status-labels";
 import type { PaymentTargetOption } from "@/lib/queries/member-payment-targets";
 import type { MemberKinsenasYearMap } from "@/lib/queries/member-kinsenas-year";
+import type { MemberPendingSubmission } from "@/lib/queries/member-pending-submissions";
 import { KinsenasYearMap } from "@/components/finance/kinsenas-year-map";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatusPill } from "@/components/ui/status-pill";
@@ -77,6 +79,7 @@ export type MemberDashboardData = {
     loanLabel: string;
   } | null;
   recentPayments: DashboardRecentPayment[];
+  pendingSubmissions: MemberPendingSubmission[];
   paymentTargets: PaymentTargetOption[];
   kinsenasYearMap: MemberKinsenasYearMap | null;
 };
@@ -125,8 +128,10 @@ export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
   const [confirmCancelId, setConfirmCancelId] = useState<string | null>(null);
   const [cancelError, setCancelError] = useState<string | null>(null);
   const [cancelling, startCancel] = useTransition();
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const {
+    userId,
     memberName,
     headsCount,
     prepaidCredit,
@@ -139,9 +144,15 @@ export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
     nextKinsenas,
     nextAmortization,
     recentPayments,
+    pendingSubmissions,
     paymentTargets,
     kinsenasYearMap,
   } = data;
+
+  const editing =
+    editingId != null
+      ? (pendingSubmissions.find((s) => s.id === editingId) ?? null)
+      : null;
 
   function handleCancelPayment(submissionId: string) {
     if (confirmCancelId !== submissionId) {
@@ -441,6 +452,19 @@ export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
                               reviewed yet.
                             </p>
                           ) : null}
+                          {confirmCancelId !== payment.id ? (
+                            <button
+                              type="button"
+                              className="rl-btn rl-btn-secondary rl-btn-sm"
+                              onClick={() => setEditingId(payment.id)}
+                            >
+                              <Pencil
+                                className="mr-1.5 h-3.5 w-3.5"
+                                aria-hidden
+                              />
+                              Edit
+                            </button>
+                          ) : null}
                           <button
                             type="button"
                             className={
@@ -457,7 +481,7 @@ export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
                               ? "Deleting…"
                               : confirmCancelId === payment.id
                                 ? "Confirm delete"
-                                : "Delete submission"}
+                                : "Delete"}
                           </button>
                           {confirmCancelId === payment.id ? (
                             <button
@@ -479,6 +503,18 @@ export function MemberDashboardClient({ data }: { data: MemberDashboardData }) {
           </section>
         </div>
       </div>
+
+      {editing ? (
+        <EditPaymentSubmissionModal
+          submission={editing}
+          userId={userId}
+          onClose={() => setEditingId(null)}
+          onSaved={() => {
+            setEditingId(null);
+            router.refresh();
+          }}
+        />
+      ) : null}
     </FundCanvas>
   );
 }

@@ -252,6 +252,248 @@ export async function submitPaymentProof(
   }
 }
 
+const updatePaymentProofSchema = z
+  .object({
+    submissionId: z.string().min(1, "Submission is required"),
+    amount: z
+      .union([z.string(), z.number()])
+      .transform((v) => (typeof v === "number" ? v.toFixed(2) : v.trim()))
+      .refine((v) => /^\d+(\.\d{1,2})?$/.test(v), "Invalid amount")
+      .refine((v) => Number(v) > 0, "Amount must be greater than zero"),
+    targetType: z.enum(["CONTRIBUTION", "LOAN_AMORTIZATION"]),
+    targetId: z.string().min(1, "Target is required"),
+    paymentChannel: paymentChannelSchema,
+    referenceNumber: z.string().optional().default(""),
+    /** New receipt path; omit/null to keep the existing receipt. */
+    receiptPath: z.string().optional().nullable(),
+    paidAt: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "Payment date is required (YYYY-MM-DD)"),
+    aiExtractedAmount: z
+      .union([z.string(), z.number(), z.null()])
+      .optional()
+      .transform((v) => {
+        if (v === undefined || v === null || v === "") return null;
+        const n = typeof v === "number" ? v : Number(v);
+        return Number.isFinite(n) ? n.toFixed(2) : null;
+      }),
+    aiExtractedRefNo: z
+      .union([z.string(), z.null()])
+      .optional()
+      .transform((v) => {
+        if (!v || !v.trim()) return null;
+        return v.replace(/[\s-]/g, "").toUpperCase();
+      }),
+    aiExtractedChannel: z
+      .union([paymentChannelSchema, z.literal("UNKNOWN"), z.null()])
+      .optional()
+      .transform((v) => {
+        if (!v || v === "UNKNOWN") return null;
+        return v;
+      }),
+    aiConfidenceNote: z
+      .union([z.string(), z.null()])
+      .optional()
+      .transform((v) => (v && v.trim() ? v.trim() : null)),
+  })
+  .superRefine((data, ctx) => {
+    if (data.paymentChannel !== "CASH" && !data.referenceNumber?.trim()) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["referenceNumber"],
+        message: "Reference number is required.",
+      });
+    }
+  });
+
+export type UpdatePaymentProofInput = z.input<typeof updatePaymentProofSchema>;
+
+/**
+ * Member self-service: revise an unreviewed payment proof in place.
+ * Only while status is PENDING_VERIFICATION — preserves createdAt so Rule #3
+ * receipt freeze stays anchored to the original submit time.
+ */
+export async function updatePaymentSubmission(
+  input: UpdatePaymentProofInput,
+): Promise<ActionResult<{ id: string }>> {
+  try {
+    const member = await requireAppUser(["MEMBER", "TREASURER", "AUDITOR"]);
+    const parsed = updatePaymentProofSchema.safeParse(input);
+    if (!parsed.success) {
+      return fail(parsed.error.issues[0]?.message ?? "Invalid submission.");
+    }
+
+    const data = parsed.data;
+    const submissionId = data.submissionId.trim();
+    const existing = await prisma.paymentSubmission.findFirst({
+      where: {
+        id: submissionId,
+        userId: member.id,
+      },
+      select: {
+        id: true,
+        status: true,
+        receiptUrl: true,
+        paymentChannel: true,
+        referenceNumber: true,
+      },
+    });
+
+    if (!existing) {
+      return fail("Payment submission not found.");
+    }
+    if (existing.status !== "PENDING_VERIFICATION") {
+      return fail(
+        "This payment has already been reviewed and can no longer be edited.",
+      );
+    }
+
+    const paidAt = parsePaidAt(data.paidAt);
+    const todayIso = todayLocalIsoDate();
+    if (data.paidAt > todayIso) {
+      return fail("Payment date cannot be in the future.");
+    }
+
+    let referenceNumber = normalizeReferenceNumber(data.referenceNumber ?? "");
+    if (data.paymentChannel === "CASH" && !referenceNumber) {
+      // Keep the existing cash tag when the member leaves ref blank.
+      if (
+        existing.paymentChannel === "CASH" &&
+        existing.referenceNumber.startsWith("CASH-")
+      ) {
+        referenceNumber = existing.referenceNumber;
+      } else {
+        referenceNumber = buildCashReference(member.id, data.paidAt);
+      }
+    }
+    if (!referenceNumber) {
+      return fail("Reference number is required.");
+    }
+
+    const incomingReceipt = data.receiptPath?.trim() || null;
+    const receiptUrl = incomingReceipt ?? existing.receiptUrl;
+    if (data.paymentChannel !== "CASH" && !receiptUrl) {
+      return fail("Attach a receipt image for digital payments.");
+    }
+
+    const duplicate = await prisma.paymentSubmission.findFirst({
+      where: {
+        paymentChannel: data.paymentChannel,
+        referenceNumber,
+        NOT: { id: submissionId },
+      },
+      select: { id: true },
+    });
+    if (duplicate) {
+      return fail(
+        data.paymentChannel === "CASH"
+          ? "A matching cash submission already exists. Try again or contact the treasurer."
+          : "This payment reference number was already submitted for this channel. Check your receipt or contact the treasurer.",
+      );
+    }
+
+    if (data.targetType === "CONTRIBUTION") {
+      const contribution = await prisma.contribution.findFirst({
+        where: { id: data.targetId, userId: member.id },
+        select: { id: true },
+      });
+      if (!contribution) {
+        return fail("Contribution not found for your account.");
+      }
+    } else {
+      const amortization = await prisma.loanAmortization.findFirst({
+        where: {
+          id: data.targetId,
+          loan: { borrowerId: member.id },
+        },
+        select: { id: true },
+      });
+      if (!amortization) {
+        return fail("Loan installment not found for your account.");
+      }
+    }
+
+    const planned = await planSubmissionAllocation({
+      userId: member.id,
+      amount: data.amount,
+      targetType: data.targetType,
+      paidAt,
+    });
+    const anchorId = planned.primaryTargetId ?? data.targetId;
+
+    const aiFields = incomingReceipt
+      ? {
+          aiExtractedAmount: data.aiExtractedAmount
+            ? new Prisma.Decimal(data.aiExtractedAmount)
+            : null,
+          aiExtractedRefNo: data.aiExtractedRefNo,
+          aiExtractedChannel: data.aiExtractedChannel,
+          aiConfidenceNote: data.aiConfidenceNote,
+        }
+      : data.paymentChannel === "CASH" && !receiptUrl
+        ? {
+            aiConfidenceNote:
+              data.aiConfidenceNote ??
+              `Cash payment attested for ${data.paidAt} (no receipt image).`,
+          }
+        : {};
+
+    const updated = await prisma.paymentSubmission.updateMany({
+      where: {
+        id: submissionId,
+        userId: member.id,
+        status: "PENDING_VERIFICATION",
+      },
+      data: {
+        targetType: data.targetType,
+        contributionId:
+          data.targetType === "CONTRIBUTION" ? anchorId : null,
+        loanAmortizationId:
+          data.targetType === "LOAN_AMORTIZATION" ? anchorId : null,
+        amount: new Prisma.Decimal(data.amount),
+        paymentChannel: data.paymentChannel,
+        referenceNumber,
+        receiptUrl:
+          data.paymentChannel === "CASH" && !receiptUrl ? null : receiptUrl,
+        paidAt,
+        ...aiFields,
+        allocationSummary: planned.summary,
+      },
+    });
+
+    if (updated.count === 0) {
+      return fail(
+        "This payment has already been reviewed and can no longer be edited.",
+      );
+    }
+
+    revalidatePath("/dashboard");
+    revalidatePath("/pay");
+    revalidatePath("/verify");
+    revalidatePath("/history");
+    revalidatePath("/loans");
+
+    return ok(
+      { id: submissionId },
+      "Payment proof updated. Still awaiting verification.",
+    );
+  } catch (error) {
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      return fail(
+        "This payment reference was already submitted for this channel. Check details or contact the treasurer.",
+      );
+    }
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to update payment proof.";
+    return fail(message);
+  }
+}
+
 /**
  * Member self-service: withdraw an unreviewed payment proof.
  * Only the submitting member (MEMBER / TREASURER / AUDITOR acting on their own

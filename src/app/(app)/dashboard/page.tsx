@@ -22,6 +22,7 @@ import { planSubmissionAllocation } from "@/lib/finance/plan-submission-allocati
 import { mapPaymentSubmissionStatus } from "@/lib/finance/status-labels";
 import { getMemberPaymentTargets } from "@/lib/queries/member-payment-targets";
 import { getMemberKinsenasYearMap } from "@/lib/queries/member-kinsenas-year";
+import { getMemberPendingSubmissions } from "@/lib/queries/member-pending-submissions";
 import {
   MemberDashboardClient,
   type DashboardRecentPayment,
@@ -68,6 +69,7 @@ async function loadDashboard(userId: string): Promise<MemberDashboardData> {
     paymentTargets,
     nextContribution,
     kinsenasYearMap,
+    pendingSubmissions,
     activeCycle,
   ] = await Promise.all([
     prisma.user.findUniqueOrThrow({ where: { id: userId } }),
@@ -131,6 +133,7 @@ async function loadDashboard(userId: string): Promise<MemberDashboardData> {
       },
     }),
     getMemberKinsenasYearMap(userId),
+    getMemberPendingSubmissions(userId),
     prisma.fundCycle.findFirst({ where: { isActive: true } }),
   ]);
 
@@ -412,6 +415,7 @@ async function loadDashboard(userId: string): Promise<MemberDashboardData> {
     nextKinsenas,
     nextAmortization,
     recentPayments,
+    pendingSubmissions,
     paymentTargets,
     kinsenasYearMap,
   };
